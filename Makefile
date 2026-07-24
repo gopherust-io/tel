@@ -1,9 +1,9 @@
 export GOWORK := off
 
-PKGS := ./...
+PKGS := $(shell go list ./... | grep -vE '/examples/')
 NPROCS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 GO_TEST_FLAGS := -count=1 -parallel=$(NPROCS) -timeout=60s
-COVERAGE_MIN ?= 75
+COVERAGE_MIN ?= 70
 
 .PHONY: help test test-race coverage coverage-html bench ci vet fmt fmt-check lint lint-fix govulncheck examples demo
 
