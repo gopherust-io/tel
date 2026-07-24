@@ -4,6 +4,8 @@ OTLP metrics and traces for Go. The **record path** is allocation-sensitive; **e
 
 Module: [`github.com/gopherust-io/tel`](https://github.com/gopherust-io/tel) · JetStream: [nats](https://github.com/gopherust-io/nats)
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/gopherust-io/tel/badge)](https://scorecard.dev/viewer/?uri=github.com/gopherust-io/tel)
+
 ```bash
 go get github.com/gopherust-io/tel@latest
 ```
