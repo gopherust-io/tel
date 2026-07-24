@@ -21,6 +21,6 @@ make examples         # build examples
 3. Update `README.md` when changing public APIs.
 4. Do not commit secrets.
 
-CI on PRs runs format, vet, unit tests, examples build, and golangci-lint. Race, benchmarks, and govulncheck run on pushes to `main`. Local `make ci` also runs race and govulncheck (stricter than PR CI).
+CI on PRs and `main` runs format, vet, unit tests, examples build, golangci-lint, race, benchmarks, and govulncheck.
 
 Security reports: see [SECURITY.md](SECURITY.md). Do not open public issues for vulnerabilities.
