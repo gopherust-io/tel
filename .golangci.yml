@@ -1,0 +1,174 @@
+version: "2"
+run:
+  modules-download-mode: readonly
+  tests: true
+  timeout: 5m
+linters:
+  default: all
+  disable:
+    - arangolint
+    - depguard
+    - dupl
+    - exhaustruct
+    - ginkgolinter
+    - gomodguard
+    - ireturn
+    - promlinter
+    - tagliatelle
+    - unqueryvet
+    - wrapcheck
+    - wsl
+    - wsl_v5
+    - zerologlint
+    - goconst
+    - modernize
+    - tagalign
+    - mnd
+  settings:
+    cyclop:
+      max-complexity: 20
+    funlen:
+      lines: 120
+      statements: 80
+    gocognit:
+      min-complexity: 25
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+        - typeDefFirst
+        - unnamedResult
+    gocyclo:
+      min-complexity: 20
+    gosec:
+      excludes:
+        - G115
+    govet:
+      disable:
+        - copylocks
+      enable-all: true
+    lll:
+      line-length: 140
+    nestif:
+      min-complexity: 5
+    perfsprint:
+      err-error: false
+      error-format: false
+      errorf: false
+      sprintf1: false
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+    varnamelen:
+      min-name-length: 2
+      ignore-names:
+        - c
+        - i
+        - j
+        - k
+        - n
+        - t
+        - x
+        - err
+        - ctx
+        - id
+        - fn
+        - ok
+        - tel
+        - cfg
+      ignore-decls:
+        - t testing.TB
+        - i int
+        - j int
+        - n int
+        - w http.ResponseWriter
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: .
+        linters:
+          - containedctx
+          - err113
+          - funcorder
+          - noinlineerr
+          - recvcheck
+      - path: _test\.go
+        linters:
+          - cyclop
+          - err113
+          - forcetypeassert
+          - funcorder
+          - funlen
+          - gochecknoglobals
+          - gocognit
+          - gocyclo
+          - noinlineerr
+          - nlreturn
+          - paralleltest
+          - testableexamples
+          - testpackage
+          - varnamelen
+          - wsl_v5
+          - copyloopvar
+          - intrange
+          - usetesting
+          - testifylint
+          - unparam
+          - nilnil
+          - embeddedstructfieldcheck
+          - gofumpt
+      - path: monitor\.go
+        linters:
+          - gochecknoglobals
+      - path: tel\.go
+        linters:
+          - gochecknoglobals
+          - gochecknoinits
+          - unused
+      - path: model\.go
+        linters:
+          - govet
+      - path: metric\.go
+        linters:
+          - govet
+          - varnamelen
+      - path: cardinality\.go
+        linters:
+          - nonamedreturns
+    paths:
+      - examples
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/gopherust-io/tel
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
