@@ -174,6 +174,8 @@ func (t *Telemetry) Start(ctx context.Context) error {
 }
 
 func (t *Telemetry) startOTel(ctx context.Context) error {
+	configureExportCompression(t.cfg.WithCompression)
+
 	provider, shutdown, err := newMeterProvider(ctx, t.cfg)
 	if err != nil {
 		t.started.Store(false)

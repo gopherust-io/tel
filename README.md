@@ -1,16 +1,14 @@
 # tel
 
-OpenTelemetry metrics and traces for Go services: OTLP export, low-allocation instruments, and a small HTTP monitor.
+OTLP metrics and traces for Go. The **record path** is allocation-sensitive; **export** is batched OTLP/gRPC—keep those worlds separate.
 
-**Import:** `github.com/gopherust-io/tel`
-
-Companion JetStream client: [`github.com/gopherust-io/nats`](https://github.com/gopherust-io/nats).
-
-## Quick start
+Module: [`github.com/gopherust-io/tel`](https://github.com/gopherust-io/tel) · JetStream: [nats](https://github.com/gopherust-io/nats)
 
 ```bash
 go get github.com/gopherust-io/tel@latest
 ```
+
+## Example
 
 ```go
 package main
@@ -23,66 +21,86 @@ import (
 )
 
 func main() {
+	// Local/tests: tel.DefaultDebugConfig() (OTLP + monitor off).
 	cfg := tel.DefaultConfig()
 	cfg.Service = "orders-api"
-	cfg.TelConfig.Enable = true
 	cfg.TelConfig.Address = "127.0.0.1:4317"
-	cfg.MonitorConfig.Enable = true
-	cfg.MonitorConfig.MonitorAddr = "0.0.0.0:8011"
 
 	t := tel.NewWithConfig(cfg)
 	tel.SetGlobal(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	ctx := context.Background()
 	if err := t.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
 	defer t.Shutdown(ctx)
 
 	ctx = tel.WrapContext(ctx, t)
-	_ = ctx
+
+	processed, err := t.Registry().Counter("orders.processed")
+	if err != nil {
+		log.Fatal(err)
+	}
+	processed.AddWith(ctx, 1, "orders.created")
 }
 ```
 
-When `TelConfig.Enable` is `false`, telemetry uses noop meter and tracer providers. `DefaultDebugConfig()` disables OTLP and the monitor for local development.
+## Record
 
-## Recording metrics (low-allocation)
+Create instruments once. Use subject-keyed `*With` helpers—they hit `AttrCache`. Subjects must be a **bounded** set or you will blow cardinality.
 
 ```go
-registry := tel.FromCtx(ctx).Registry()
+r := tel.FromCtx(ctx).Registry()
 
-events, _ := registry.Counter("orders.processed")
-latency, _ := registry.Histogram("orders.latency_seconds")
+count, err := r.Counter("orders.processed")
+if err != nil {
+	return err
+}
+latency, err := r.Histogram("orders.latency_seconds")
+if err != nil {
+	return err
+}
 
-events.AddWith(ctx, 1, "orders.created")
+count.AddWith(ctx, 1, "orders.created")
 
 timer := tel.NewTimer(latency)
 timer.Start()
-// ... work ...
+// work
 timer.StopWith(ctx, "orders.created")
 ```
 
-## Distributed tracing helpers
+## Propagate
 
 ```go
 headers := tel.InjectContext(ctx, nil)
 ctx = tel.ExtractContext(ctx, inboundHeaders)
 ```
 
-Messaging attribute helpers (`MessagingSystem`, `MessagingSubject`, …) are available for publishers/consumers (including NATS).
+Prefer `MessagingSystem` / `MessagingSubject` (and friends) over hand-rolled attribute maps.
 
-## Monitor endpoints
+## Knobs
 
-- `GET /healthz` — liveness
-- `GET /stats` — runtime stats
+| Concern | Knob |
+|---------|------|
+| Collector | `TelConfig.Address` / `TEL_COLLECTOR_GRPC_ADDR` |
+| Export on/off | `TelConfig.Enable` / `TEL_ENABLE` |
+| Quiet local | `DefaultDebugConfig()` |
+| Compression | On by default; gzip BestSpeed on **export only** (`TEL_ENABLE_COMPRESSION`) |
+| Monitor | `MonitorConfig` → `GET /healthz`, `GET /stats` |
+
+Compression sets the process-wide gRPC `gzip` level. Default export is insecure—fine for a local collector; use `TelConfig.Raw` PEM for TLS/mTLS.
+
+## Do not
+
+1. Put network I/O, locks, or attribute allocation on the record path.
+2. Pass unbounded strings (user IDs, raw URLs) as `*With` subjects.
+3. Skip `Start` on a production `DefaultConfig()` and assume metrics still export.
 
 ## Development
 
 ```bash
 make test
-make test-race
-make lint
-make demo    # examples/basic
+make demo
 ```
+
+[CONTRIBUTING.md](CONTRIBUTING.md)
