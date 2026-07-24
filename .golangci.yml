@@ -130,6 +130,9 @@ linters:
           - nilnil
           - embeddedstructfieldcheck
           - gofumpt
+      - path: trace\.go
+        linters:
+          - gochecknoglobals
       - path: monitor\.go
         linters:
           - gochecknoglobals

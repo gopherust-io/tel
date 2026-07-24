@@ -12,10 +12,10 @@ import (
 
 // Cached messaging attributes — avoid reconstructing constant KeyValues on every span.
 var (
-	messagingSystemAttr  = attribute.String("messaging.system", "nats")
-	messagingOpPublish   = attribute.String("messaging.operation", "publish")
-	messagingOpProcess   = attribute.String("messaging.operation", "process")
-	messagingDestKey     = attribute.Key("messaging.destination")
+	messagingSystemAttr = attribute.String("messaging.system", "nats")
+	messagingOpPublish  = attribute.String("messaging.operation", "publish")
+	messagingOpProcess  = attribute.String("messaging.operation", "process")
+	messagingDestKey    = attribute.Key("messaging.destination")
 )
 
 // Tracer returns a named tracer from the configured provider.

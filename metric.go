@@ -63,7 +63,7 @@ func (c *AttrCache) SetDetector(d *cardinalityDetector) {
 // fnv32aString hashes without allocating (no []byte conversion).
 func fnv32aString(s string) uint32 {
 	h := uint32(fnvOffset32)
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		h ^= uint32(s[i])
 		h *= fnvPrime32
 	}
