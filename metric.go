@@ -30,9 +30,9 @@ type attrShard struct {
 // AttrCache interns attribute sets and metric options for hot-path label reuse.
 // Entries are sharded by subject hash; each shard is a lock-free CoW map.
 type AttrCache struct {
+	shards       [attrCacheShards]attrShard
 	detector     *cardinalityDetector
 	overflow     subjectEntry
-	shards       [attrCacheShards]attrShard
 	maxEntries   int
 	size         atomic.Int64
 	overflowOnce sync.Once
