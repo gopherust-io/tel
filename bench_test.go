@@ -2,18 +2,31 @@ package tel
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
-func BenchmarkAttrCache_SubjectMiss(b *testing.B) {
+func BenchmarkAttrCache_SubjectHit(b *testing.B) {
 	cache := newAttrCache(1000)
+	cache.Subject("orders.created")
 	b.ReportAllocs()
 
 	for b.Loop() {
 		cache.Subject("orders.created")
+	}
+}
+
+func BenchmarkAttrCache_SubjectMiss(b *testing.B) {
+	cache := newAttrCache(b.N + 1)
+	b.ReportAllocs()
+
+	i := 0
+	for b.Loop() {
+		cache.Subject(fmt.Sprintf("orders.%d", i))
+		i++
 	}
 }
 

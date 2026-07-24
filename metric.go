@@ -1,7 +1,6 @@
 package tel
 
 import (
-	"hash/fnv"
 	"sync"
 	"sync/atomic"
 
@@ -12,6 +11,8 @@ import (
 const (
 	overflowSubject = "_overflow"
 	attrCacheShards = 16
+	fnvOffset32     = 2166136261
+	fnvPrime32      = 16777619
 )
 
 type subjectEntry struct {
@@ -59,11 +60,19 @@ func (c *AttrCache) SetDetector(d *cardinalityDetector) {
 	c.detector = d
 }
 
-func (c *AttrCache) shardIndex(subject string) uint32 {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(subject))
+// fnv32aString hashes without allocating (no []byte conversion).
+func fnv32aString(s string) uint32 {
+	h := uint32(fnvOffset32)
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= fnvPrime32
+	}
 
-	return h.Sum32() % attrCacheShards
+	return h
+}
+
+func (c *AttrCache) shardIndex(subject string) uint32 {
+	return fnv32aString(subject) % attrCacheShards
 }
 
 func (c *AttrCache) Subject(subject string) attribute.Set {
@@ -79,10 +88,6 @@ func (c *AttrCache) SubjectRecordOpts(subject string) []metric.RecordOption {
 }
 
 func (c *AttrCache) entry(subject string) subjectEntry {
-	if c.detector != nil {
-		c.detector.Observe(subject)
-	}
-
 	idx := c.shardIndex(subject)
 	s := &c.shards[idx]
 
@@ -93,7 +98,15 @@ func (c *AttrCache) entry(subject string) subjectEntry {
 		}
 
 		if int(c.size.Load()) >= c.maxEntries {
+			if c.detector != nil {
+				c.detector.ObserveMiss(subject, true)
+			}
+
 			return c.overflowEntry()
+		}
+
+		if c.detector != nil {
+			c.detector.ObserveMiss(subject, false)
 		}
 
 		attrs := attribute.NewSet(attribute.String("subject", subject))

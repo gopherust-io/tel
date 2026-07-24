@@ -10,6 +10,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Cached messaging attributes — avoid reconstructing constant KeyValues on every span.
+var (
+	messagingSystemAttr  = attribute.String("messaging.system", "nats")
+	messagingOpPublish   = attribute.String("messaging.operation", "publish")
+	messagingOpProcess   = attribute.String("messaging.operation", "process")
+	messagingDestKey     = attribute.Key("messaging.destination")
+)
+
 // Tracer returns a named tracer from the configured provider.
 func (t *Telemetry) Tracer(name string) trace.Tracer {
 	if t.traceProvider == nil {
@@ -26,9 +34,24 @@ func (t *Telemetry) StartSpan(
 	spanName string,
 	opts ...trace.SpanStartOption,
 ) (context.Context, trace.Span) {
-	ctx, span := t.Tracer(t.cfg.Service).Start(ctx, spanName, opts...) //nolint:spancheck // caller ends span
+	tr := t.tracer
+	if tr == nil {
+		tr = t.Tracer(t.cfg.Service)
+	}
+
+	ctx, span := tr.Start(ctx, spanName, opts...) //nolint:spancheck // caller ends span
 
 	return ctx, span //nolint:spancheck // caller ends span
+}
+
+func (t *Telemetry) refreshTracer() {
+	if t.traceProvider == nil {
+		t.tracer = otel.Tracer(t.cfg.Service)
+
+		return
+	}
+
+	t.tracer = t.traceProvider.Tracer(t.cfg.Service)
 }
 
 // propagator returns the global text map propagator.
@@ -40,6 +63,7 @@ func propagator() propagation.TextMapPropagator {
 func NewWithTracerProvider(cfg Config, provider trace.TracerProvider) *Telemetry {
 	tel := NewWithConfig(cfg)
 	tel.traceProvider = provider
+	tel.refreshTracer()
 	tel.started.Store(true)
 
 	return tel
@@ -48,7 +72,7 @@ func NewWithTracerProvider(cfg Config, provider trace.TracerProvider) *Telemetry
 // InjectContext writes trace context into a string header map.
 func InjectContext(ctx context.Context, headers map[string][]string) map[string][]string {
 	if headers == nil {
-		headers = make(map[string][]string)
+		headers = make(map[string][]string, 2)
 	}
 
 	propagator().Inject(ctx, headerCarrier(headers))
@@ -77,19 +101,19 @@ func EndSpan(span trace.Span, err error) {
 
 // MessagingSubject returns a messaging destination attribute for NATS spans.
 func MessagingSubject(subject string) attribute.KeyValue {
-	return attribute.String("messaging.destination", subject)
+	return messagingDestKey.String(subject)
 }
 
 func MessagingSystem() attribute.KeyValue {
-	return attribute.String("messaging.system", "nats")
+	return messagingSystemAttr
 }
 
 func MessagingOperationPublish() attribute.KeyValue {
-	return attribute.String("messaging.operation", "publish")
+	return messagingOpPublish
 }
 
 func MessagingOperationProcess() attribute.KeyValue {
-	return attribute.String("messaging.operation", "process")
+	return messagingOpProcess
 }
 
 type headerCarrier map[string][]string
@@ -104,6 +128,17 @@ func (c headerCarrier) Get(key string) string {
 }
 
 func (c headerCarrier) Set(key, value string) {
+	if vals := c[key]; len(vals) == 1 {
+		vals[0] = value
+
+		return
+	}
+	if vals := c[key]; cap(vals) >= 1 {
+		c[key] = append(vals[:0], value)
+
+		return
+	}
+
 	c[key] = []string{value}
 }
 

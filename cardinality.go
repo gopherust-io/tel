@@ -68,18 +68,24 @@ func (d *cardinalityDetector) Stop() {
 	<-d.doneCh
 }
 
-func (d *cardinalityDetector) Observe(subject string) {
+// ObserveMiss records a cache miss (insert or overflow). Hits skip this path.
+func (d *cardinalityDetector) ObserveMiss(subject string, overflow bool) {
 	if d == nil || !d.cfg.Enable {
 		return
 	}
 
 	d.records.Add(1)
-
-	if d.cache.Len() >= d.cfg.MaxCardinality {
+	if overflow {
 		d.overflows.Add(1)
-
-		_ = subject
 	}
+
+	_ = subject
+}
+
+// Observe records a label sighting (tests / diagnostics). Prefer ObserveMiss on cache inserts.
+func (d *cardinalityDetector) Observe(subject string) {
+	overflow := d != nil && d.cache != nil && d.cache.Len() >= d.cfg.MaxCardinality
+	d.ObserveMiss(subject, overflow)
 }
 
 func (d *cardinalityDetector) run() {

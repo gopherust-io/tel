@@ -21,8 +21,7 @@ func TestInjectExtractContext(t *testing.T) {
 	otel.SetTracerProvider(provider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}))
 
-	tel := NewWithConfig(DefaultDebugConfig())
-	tel.traceProvider = provider
+	tel := NewWithTracerProvider(DefaultDebugConfig(), provider)
 
 	ctx, span := tel.StartSpan(context.Background(), "parent")
 	headers := InjectContext(ctx, nil)
@@ -50,8 +49,7 @@ func TestEndSpanRecordsError(t *testing.T) {
 	)
 	otel.SetTracerProvider(provider)
 
-	tel := NewWithConfig(DefaultDebugConfig())
-	tel.traceProvider = provider
+	tel := NewWithTracerProvider(DefaultDebugConfig(), provider)
 
 	_, span := tel.StartSpan(context.Background(), "err-span")
 	EndSpan(span, assert.AnError)

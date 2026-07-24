@@ -15,32 +15,24 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
-var (
-	globalMu        sync.RWMutex
-	globalTelemetry *Telemetry
-)
+var globalTelemetry atomic.Pointer[Telemetry]
 
 func init() {
-	globalTelemetry = NewWithConfig(DefaultDebugConfig())
+	globalTelemetry.Store(NewWithConfig(DefaultDebugConfig()))
 }
 
 func Global() *Telemetry {
-	globalMu.RLock()
-	defer globalMu.RUnlock()
-
-	return globalTelemetry
+	return globalTelemetry.Load()
 }
 
 func SetGlobal(t *Telemetry) {
-	globalMu.Lock()
-	defer globalMu.Unlock()
-
-	globalTelemetry = t
+	globalTelemetry.Store(t)
 }
 
 type Telemetry struct {
 	metricProvider metric.MeterProvider
 	traceProvider  trace.TracerProvider
+	tracer         trace.Tracer
 	registry       *Registry
 	cardinality    *cardinalityDetector
 	monitor        *monitorServer
@@ -65,12 +57,15 @@ func NewWithConfig(cfg Config) *Telemetry {
 
 	provider := noop.NewMeterProvider()
 
-	return &Telemetry{
+	tel := &Telemetry{
 		cfg:            cfg,
 		metricProvider: provider,
 		traceProvider:  tracenoop.NewTracerProvider(),
 		registry:       newRegistry(provider.Meter(service)),
 	}
+	tel.refreshTracer()
+
+	return tel
 }
 
 func DefaultConfig() Config {
@@ -141,6 +136,7 @@ func (t *Telemetry) Start(ctx context.Context) error {
 	} else {
 		t.metricProvider = noop.NewMeterProvider()
 		t.traceProvider = tracenoop.NewTracerProvider()
+		t.refreshTracer()
 	}
 
 	maxCardinality := t.cfg.Metrics.CardinalityDetector.MaxCardinality
@@ -201,6 +197,7 @@ func (t *Telemetry) startOTel(ctx context.Context) error {
 
 	t.traceProvider = traceProvider
 	t.traceShutdown = traceShutdown
+	t.refreshTracer()
 
 	return nil
 }
@@ -255,6 +252,7 @@ func (t *Telemetry) shutdownGraceful(ctx context.Context) []error {
 
 	t.metricProvider = noop.NewMeterProvider()
 	t.traceProvider = tracenoop.NewTracerProvider()
+	t.refreshTracer()
 	t.registry = newRegistry(noop.NewMeterProvider().Meter("noop"))
 	t.started.Store(false)
 
