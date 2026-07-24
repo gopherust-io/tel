@@ -20,3 +20,5 @@ make examples         # build examples
 2. Run `make fmt-check`, `make test`, and `make lint` before opening a PR.
 3. Update `README.md` when changing public APIs.
 4. Do not commit secrets.
+
+CI on PRs runs format, vet, unit tests, examples build, and golangci-lint. Race, benchmarks, and govulncheck run on pushes to `main`.
