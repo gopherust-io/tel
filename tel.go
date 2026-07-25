@@ -48,6 +48,7 @@ type Telemetry struct {
 	epoch          atomic.Uint64
 	mu             sync.RWMutex
 	started        atomic.Bool
+	traceInstalled bool
 }
 
 type tKey struct{}
@@ -148,7 +149,10 @@ func (t *Telemetry) Config() Config {
 }
 
 func (t *Telemetry) Start(ctx context.Context) error {
-	if !t.started.CompareAndSwap(false, true) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.started.Load() {
 		return nil
 	}
 
@@ -158,13 +162,8 @@ func (t *Telemetry) Start(ctx context.Context) error {
 		propagation.Baggage{},
 	))
 
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
 	if t.cfg.TelConfig.Enable {
 		if err := t.startOTelLocked(ctx); err != nil {
-			t.started.Store(false)
-
 			return err
 		}
 	} else {
@@ -205,11 +204,12 @@ func (t *Telemetry) Start(ctx context.Context) error {
 		t.monitor = newMonitorServer(t.cfg.MonitorAddr)
 		if err := t.monitor.start(ctx); err != nil {
 			_ = errors.Join(t.shutdownGracefulLocked(ctx)...)
-			t.started.Store(false)
 
 			return err
 		}
 	}
+
+	t.started.Store(true)
 
 	return nil
 }
@@ -237,6 +237,10 @@ func (t *Telemetry) startOTelLocked(ctx context.Context) error {
 
 	t.traceProvider = traceProvider
 	t.traceShutdown = traceShutdown
+	if t.cfg.Traces.Enable {
+		otel.SetTracerProvider(traceProvider)
+		t.traceInstalled = true
+	}
 	t.refreshTracerLocked()
 
 	return nil
@@ -245,14 +249,17 @@ func (t *Telemetry) startOTelLocked(ctx context.Context) error {
 // Shutdown flushes exporters and releases resources. Safe to call after Start,
 // and again after a subsequent Start (restart-safe; not sync.Once).
 func (t *Telemetry) Shutdown(ctx context.Context) error {
-	if !t.started.CompareAndSwap(true, false) {
-		return nil
-	}
-
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	return errors.Join(t.shutdownGracefulLocked(ctx)...)
+	if !t.started.Load() {
+		return nil
+	}
+
+	t.started.Store(false)
+	errs := t.shutdownGracefulLocked(ctx)
+
+	return errors.Join(errs...)
 }
 
 func (t *Telemetry) shutdownGracefulLocked(ctx context.Context) []error {
@@ -300,6 +307,11 @@ func (t *Telemetry) shutdownGracefulLocked(ctx context.Context) []error {
 		t.epoch.Load(),
 		maxInstrumentsFromCfg(t.cfg),
 	)
+
+	if t.traceInstalled {
+		otel.SetTracerProvider(tracenoop.NewTracerProvider())
+		t.traceInstalled = false
+	}
 
 	return errs
 }

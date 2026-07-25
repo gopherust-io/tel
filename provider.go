@@ -72,24 +72,20 @@ func otlpExporterOptions(cfg TelConfig) ([]otlpmetricgrpc.Option, error) {
 		otlpmetricgrpc.WithEndpoint(cfg.Address),
 	}
 
-	if cfg.WithInsecure {
-		opts = append(opts, otlpmetricgrpc.WithInsecure())
-	}
-
 	if cfg.WithCompression {
 		opts = append(opts, otlpmetricgrpc.WithCompressor("gzip"))
 	}
 
-	if cfg.ServerName != "" {
-		opts = append(opts, otlpmetricgrpc.WithEndpoint(cfg.Address))
+	useTLS := cfg.ServerName != "" || len(cfg.Raw.CA) > 0 || len(cfg.Raw.Cert) > 0 || len(cfg.Raw.Key) > 0
+	if cfg.WithInsecure && !useTLS {
+		opts = append(opts, otlpmetricgrpc.WithInsecure())
 	}
 
-	if len(cfg.Raw.CA) > 0 || len(cfg.Raw.Cert) > 0 || len(cfg.Raw.Key) > 0 {
+	if useTLS {
 		tlsCfg, err := tlsConfigFromRaw(cfg)
 		if err != nil {
 			return nil, err
 		}
-
 		opts = append(opts, otlpmetricgrpc.WithTLSCredentials(credentials.NewTLS(tlsCfg)))
 	}
 
