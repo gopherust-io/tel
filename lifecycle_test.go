@@ -9,8 +9,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestShutdownRestart(t *testing.T) {
@@ -29,6 +31,99 @@ func TestShutdownRestart(t *testing.T) {
 	require.True(t, tel.started.Load())
 	require.NoError(t, tel.Shutdown(ctx))
 	require.False(t, tel.started.Load())
+}
+
+func TestConcurrentStartShutdownRace(t *testing.T) {
+	cfg := DefaultDebugConfig()
+	cfg.TelConfig.Enable = false
+	cfg.MonitorConfig.Enable = false
+
+	tel := NewWithConfig(cfg)
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = tel.Start(ctx)
+		}()
+		go func() {
+			defer wg.Done()
+			_ = tel.Shutdown(ctx)
+		}()
+	}
+	wg.Wait()
+	_ = tel.Shutdown(ctx)
+	assert.False(t, tel.started.Load())
+}
+
+func TestShutdownResetsGlobalTracerProvider(t *testing.T) {
+	cfg := DefaultDebugConfig()
+	cfg.TelConfig.Enable = false
+	cfg.MonitorConfig.Enable = false
+	cfg.Traces.Enable = false
+
+	tel := NewWithConfig(cfg)
+	ctx := context.Background()
+	require.NoError(t, tel.Start(ctx))
+
+	// Simulate a successful trace install (SetTracerProvider) without OTLP.
+	otel.SetTracerProvider(tracenoop.NewTracerProvider())
+	tel.mu.Lock()
+	tel.traceInstalled = true
+	tel.mu.Unlock()
+
+	require.NoError(t, tel.Shutdown(ctx))
+
+	tp := otel.GetTracerProvider()
+	_, ok := tp.(tracenoop.TracerProvider)
+	assert.True(t, ok, "global tracer provider should be noop after Shutdown when tel installed it")
+}
+
+func TestShutdownDoesNotClobberForeignTracerProvider(t *testing.T) {
+	foreign := tracenoop.NewTracerProvider()
+	otel.SetTracerProvider(foreign)
+
+	cfg := DefaultDebugConfig()
+	cfg.TelConfig.Enable = false
+	cfg.MonitorConfig.Enable = false
+	cfg.Traces.Enable = false
+
+	tel := NewWithConfig(cfg)
+	ctx := context.Background()
+	require.NoError(t, tel.Start(ctx))
+	require.NoError(t, tel.Shutdown(ctx))
+
+	assert.Equal(t, foreign, otel.GetTracerProvider())
+}
+
+func TestStartFailureResetsInstalledTracerProvider(t *testing.T) {
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	cfg := DefaultDebugConfig()
+	cfg.TelConfig.Enable = false
+	cfg.MonitorConfig.Enable = true
+	cfg.MonitorAddr = ln.Addr().String()
+	cfg.Traces.Enable = false
+
+	tel := NewWithConfig(cfg)
+	// Pretend traces were installed before monitor bind fails.
+	otel.SetTracerProvider(tracenoop.NewTracerProvider())
+	tel.mu.Lock()
+	tel.traceInstalled = true
+	tel.mu.Unlock()
+
+	err = tel.Start(context.Background())
+	require.Error(t, err)
+	require.False(t, tel.started.Load())
+	require.False(t, tel.traceInstalled)
+
+	_, ok := otel.GetTracerProvider().(tracenoop.TracerProvider)
+	assert.True(t, ok)
 }
 
 func TestConcurrentShutdownRace(t *testing.T) {

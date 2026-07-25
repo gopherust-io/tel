@@ -35,7 +35,6 @@ func newTracerProvider(ctx context.Context, cfg Config) (trace.TracerProvider, f
 		sdktrace.WithResource(res),
 	)
 
-	otel.SetTracerProvider(provider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		propagation.Baggage{},
@@ -66,20 +65,20 @@ func otlpTraceExporterOptions(cfg TelConfig) ([]otlptracegrpc.Option, error) {
 		otlptracegrpc.WithEndpoint(cfg.Address),
 	}
 
-	if cfg.WithInsecure {
-		opts = append(opts, otlptracegrpc.WithInsecure())
-	}
-
 	if cfg.WithCompression {
 		opts = append(opts, otlptracegrpc.WithCompressor("gzip"))
 	}
 
-	if len(cfg.Raw.CA) > 0 || len(cfg.Raw.Cert) > 0 || len(cfg.Raw.Key) > 0 {
+	useTLS := cfg.ServerName != "" || len(cfg.Raw.CA) > 0 || len(cfg.Raw.Cert) > 0 || len(cfg.Raw.Key) > 0
+	if cfg.WithInsecure && !useTLS {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+
+	if useTLS {
 		tlsCfg, err := tlsConfigFromRaw(cfg)
 		if err != nil {
 			return nil, err
 		}
-
 		opts = append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(tlsCfg)))
 	}
 

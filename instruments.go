@@ -255,7 +255,17 @@ func (c *FastCounter) AddWith(ctx context.Context, n int64, subject string) {
 		return
 	}
 
-	c.counter.Add(ctx, n, c.cache.SubjectOpts(subject)...)
+	opts := c.cache.SubjectOpts(subject)
+	if len(c.opts) > 0 {
+		combined := make([]metric.AddOption, 0, len(c.opts)+len(opts))
+		combined = append(combined, c.opts...)
+		combined = append(combined, opts...)
+		c.counter.Add(ctx, n, combined...)
+
+		return
+	}
+
+	c.counter.Add(ctx, n, opts...)
 }
 
 func (h *FastHistogram) WithAttrs(attrs attribute.Set) *FastHistogram {
@@ -293,7 +303,17 @@ func (h *FastHistogram) RecordWith(ctx context.Context, value float64, subject s
 		return
 	}
 
-	h.histogram.Record(ctx, value, h.cache.SubjectRecordOpts(subject)...)
+	opts := h.cache.SubjectRecordOpts(subject)
+	if len(h.recordOpts) > 0 {
+		combined := make([]metric.RecordOption, 0, len(h.recordOpts)+len(opts))
+		combined = append(combined, h.recordOpts...)
+		combined = append(combined, opts...)
+		h.histogram.Record(ctx, value, combined...)
+
+		return
+	}
+
+	h.histogram.Record(ctx, value, opts...)
 }
 
 func (g *FastGauge) WithAttrs(attrs attribute.Set) *FastGauge {
@@ -331,7 +351,17 @@ func (g *FastGauge) RecordWith(ctx context.Context, value int64, subject string)
 		return
 	}
 
-	g.gauge.Record(ctx, value, g.cache.SubjectRecordOpts(subject)...)
+	opts := g.cache.SubjectRecordOpts(subject)
+	if len(g.recordOpts) > 0 {
+		combined := make([]metric.RecordOption, 0, len(g.recordOpts)+len(opts))
+		combined = append(combined, g.recordOpts...)
+		combined = append(combined, opts...)
+		g.gauge.Record(ctx, value, combined...)
+
+		return
+	}
+
+	g.gauge.Record(ctx, value, opts...)
 }
 
 type Timer struct {
