@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -35,51 +33,27 @@ func newTracerProvider(ctx context.Context, cfg Config) (trace.TracerProvider, f
 		sdktrace.WithResource(res),
 	)
 
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	))
+	installPropagator()
 
-	shutdown := func(shutdownCtx context.Context) error {
-		var shutdownErr error
-
-		err := provider.Shutdown(shutdownCtx)
-		if err != nil {
-			shutdownErr = err
-		}
-
-		err = exporter.Shutdown(shutdownCtx)
-
-		if err != nil && shutdownErr == nil {
-			shutdownErr = err
-		}
-
-		return shutdownErr
-	}
-
-	return provider, shutdown, nil
+	return provider, shutdownProviderAndExporter(provider, exporter), nil
 }
 
 func otlpTraceExporterOptions(cfg TelConfig) ([]otlptracegrpc.Option, error) {
-	opts := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint(cfg.Address),
+	dial, err := otlpDialSettings(cfg)
+	if err != nil {
+		return nil, err
 	}
-
-	if cfg.WithCompression {
+	opts := []otlptracegrpc.Option{
+		otlptracegrpc.WithEndpoint(dial.endpoint),
+	}
+	if dial.compress {
 		opts = append(opts, otlptracegrpc.WithCompressor("gzip"))
 	}
-
-	useTLS := cfg.ServerName != "" || len(cfg.Raw.CA) > 0 || len(cfg.Raw.Cert) > 0 || len(cfg.Raw.Key) > 0
-	if cfg.WithInsecure && !useTLS {
+	if dial.insecure {
 		opts = append(opts, otlptracegrpc.WithInsecure())
 	}
-
-	if useTLS {
-		tlsCfg, err := tlsConfigFromRaw(cfg)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(tlsCfg)))
+	if dial.tlsConfig != nil {
+		opts = append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(dial.tlsConfig)))
 	}
 
 	return opts, nil

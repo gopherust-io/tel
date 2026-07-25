@@ -47,46 +47,26 @@ func newMeterProvider(ctx context.Context, cfg Config) (metric.MeterProvider, fu
 	}
 
 	provider := sdkmetric.NewMeterProvider(providerOpts...)
-	shutdown := func(shutdownCtx context.Context) error {
-		var shutdownErr error
 
-		err := provider.Shutdown(shutdownCtx)
-		if err != nil {
-			shutdownErr = err
-		}
-
-		err = exporter.Shutdown(shutdownCtx)
-
-		if err != nil && shutdownErr == nil {
-			shutdownErr = err
-		}
-
-		return shutdownErr
-	}
-
-	return provider, shutdown, nil
+	return provider, shutdownProviderAndExporter(provider, exporter), nil
 }
 
 func otlpExporterOptions(cfg TelConfig) ([]otlpmetricgrpc.Option, error) {
-	opts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithEndpoint(cfg.Address),
+	dial, err := otlpDialSettings(cfg)
+	if err != nil {
+		return nil, err
 	}
-
-	if cfg.WithCompression {
+	opts := []otlpmetricgrpc.Option{
+		otlpmetricgrpc.WithEndpoint(dial.endpoint),
+	}
+	if dial.compress {
 		opts = append(opts, otlpmetricgrpc.WithCompressor("gzip"))
 	}
-
-	useTLS := cfg.ServerName != "" || len(cfg.Raw.CA) > 0 || len(cfg.Raw.Cert) > 0 || len(cfg.Raw.Key) > 0
-	if cfg.WithInsecure && !useTLS {
+	if dial.insecure {
 		opts = append(opts, otlpmetricgrpc.WithInsecure())
 	}
-
-	if useTLS {
-		tlsCfg, err := tlsConfigFromRaw(cfg)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, otlpmetricgrpc.WithTLSCredentials(credentials.NewTLS(tlsCfg)))
+	if dial.tlsConfig != nil {
+		opts = append(opts, otlpmetricgrpc.WithTLSCredentials(credentials.NewTLS(dial.tlsConfig)))
 	}
 
 	return opts, nil

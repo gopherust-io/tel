@@ -82,142 +82,135 @@ func (r *Registry) instrumentCount() int {
 	return len(r.counters) + len(r.hists) + len(r.gauges)
 }
 
-func (r *Registry) Counter(name string, opts ...metric.Int64CounterOption) (*FastCounter, error) {
-	r.mu.RLock()
-
-	if counter, ok := r.counters[name]; ok {
-		r.mu.RUnlock()
-
-		return counter, nil
-	}
-
-	r.mu.RUnlock()
-
-	counter, err := r.meter.Int64Counter(name, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	fast := &FastCounter{
-		counter:  counter,
-		cache:    r.cache,
-		epoch:    r.epoch,
-		epochPtr: r.epochPtr,
-	}
-	r.mu.Lock()
-
-	if existing, ok := r.counters[name]; ok {
-		r.mu.Unlock()
+// getOrCreate looks up under RLock, otherwise creates via create and stores under Lock.
+func getOrCreate[T any](
+	reg *Registry,
+	lookup func() (T, bool),
+	create func() (T, error),
+	store func(T),
+) (T, error) {
+	reg.mu.RLock()
+	if existing, ok := lookup(); ok {
+		reg.mu.RUnlock()
 
 		return existing, nil
 	}
+	reg.mu.RUnlock()
 
-	if r.instrumentCount() >= r.maxInstruments {
-		r.mu.Unlock()
+	created, err := create()
+	if err != nil {
+		var zero T
 
-		return nil, fmt.Errorf("tel: max instruments (%d) exceeded", r.maxInstruments)
+		return zero, err
 	}
 
-	r.counters[name] = fast
-	r.mu.Unlock()
+	reg.mu.Lock()
+	if existing, ok := lookup(); ok {
+		reg.mu.Unlock()
 
-	return fast, nil
+		return existing, nil
+	}
+	if reg.instrumentCount() >= reg.maxInstruments {
+		reg.mu.Unlock()
+		var zero T
+
+		return zero, fmt.Errorf("tel: max instruments (%d) exceeded", reg.maxInstruments)
+	}
+	store(created)
+	reg.mu.Unlock()
+
+	return created, nil
+}
+
+func (r *Registry) Counter(name string, opts ...metric.Int64CounterOption) (*FastCounter, error) {
+	return getOrCreate(
+		r,
+		func() (*FastCounter, bool) {
+			counter, ok := r.counters[name]
+
+			return counter, ok
+		},
+		func() (*FastCounter, error) {
+			counter, err := r.meter.Int64Counter(name, opts...)
+			if err != nil {
+				return nil, err
+			}
+
+			return &FastCounter{
+				counter:  counter,
+				cache:    r.cache,
+				epoch:    r.epoch,
+				epochPtr: r.epochPtr,
+			}, nil
+		},
+		func(fast *FastCounter) { r.counters[name] = fast },
+	)
 }
 
 func (r *Registry) Histogram(name string, opts ...metric.Float64HistogramOption) (*FastHistogram, error) {
-	r.mu.RLock()
+	return getOrCreate(
+		r,
+		func() (*FastHistogram, bool) {
+			hist, ok := r.hists[name]
 
-	if hist, ok := r.hists[name]; ok {
-		r.mu.RUnlock()
+			return hist, ok
+		},
+		func() (*FastHistogram, error) {
+			histogram, err := r.meter.Float64Histogram(name, opts...)
+			if err != nil {
+				return nil, err
+			}
 
-		return hist, nil
-	}
-
-	r.mu.RUnlock()
-
-	histogram, err := r.meter.Float64Histogram(name, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	fast := &FastHistogram{
-		histogram: histogram,
-		cache:     r.cache,
-		epoch:     r.epoch,
-		epochPtr:  r.epochPtr,
-	}
-	r.mu.Lock()
-
-	if existing, ok := r.hists[name]; ok {
-		r.mu.Unlock()
-
-		return existing, nil
-	}
-
-	if r.instrumentCount() >= r.maxInstruments {
-		r.mu.Unlock()
-
-		return nil, fmt.Errorf("tel: max instruments (%d) exceeded", r.maxInstruments)
-	}
-
-	r.hists[name] = fast
-	r.mu.Unlock()
-
-	return fast, nil
+			return &FastHistogram{
+				histogram: histogram,
+				cache:     r.cache,
+				epoch:     r.epoch,
+				epochPtr:  r.epochPtr,
+			}, nil
+		},
+		func(fast *FastHistogram) { r.hists[name] = fast },
+	)
 }
 
 func (r *Registry) Gauge(name string, opts ...metric.Int64GaugeOption) (*FastGauge, error) {
-	r.mu.RLock()
+	return getOrCreate(
+		r,
+		func() (*FastGauge, bool) {
+			gauge, ok := r.gauges[name]
 
-	if gauge, ok := r.gauges[name]; ok {
-		r.mu.RUnlock()
+			return gauge, ok
+		},
+		func() (*FastGauge, error) {
+			gauge, err := r.meter.Int64Gauge(name, opts...)
+			if err != nil {
+				return nil, err
+			}
 
-		return gauge, nil
-	}
+			return &FastGauge{
+				gauge:    gauge,
+				cache:    r.cache,
+				epoch:    r.epoch,
+				epochPtr: r.epochPtr,
+			}, nil
+		},
+		func(fast *FastGauge) { r.gauges[name] = fast },
+	)
+}
 
-	r.mu.RUnlock()
-
-	gauge, err := r.meter.Int64Gauge(name, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	fast := &FastGauge{
-		gauge:    gauge,
-		cache:    r.cache,
-		epoch:    r.epoch,
-		epochPtr: r.epochPtr,
-	}
-	r.mu.Lock()
-
-	if existing, ok := r.gauges[name]; ok {
-		r.mu.Unlock()
-
-		return existing, nil
-	}
-
-	if r.instrumentCount() >= r.maxInstruments {
-		r.mu.Unlock()
-
-		return nil, fmt.Errorf("tel: max instruments (%d) exceeded", r.maxInstruments)
-	}
-
-	r.gauges[name] = fast
-	r.mu.Unlock()
-
-	return fast, nil
+func instrumentLive(epochPtr *atomic.Uint64, epoch uint64) bool {
+	return epochPtr == nil || epochPtr.Load() == epoch
 }
 
 func (c *FastCounter) live() bool {
-	return c.epochPtr == nil || c.epochPtr.Load() == c.epoch
+	return instrumentLive(c.epochPtr, c.epoch)
 }
 
 func (h *FastHistogram) live() bool {
-	return h.epochPtr == nil || h.epochPtr.Load() == h.epoch
+	return instrumentLive(h.epochPtr, h.epoch)
 }
 
 func (g *FastGauge) live() bool {
-	return g.epochPtr == nil || g.epochPtr.Load() == g.epoch
+	return instrumentLive(g.epochPtr, g.epoch)
 }
 
 func (c *FastCounter) WithAttrs(attrs attribute.Set) *FastCounter {
