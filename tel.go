@@ -204,6 +204,7 @@ func (t *Telemetry) Start(ctx context.Context) error {
 		t.monitor = newMonitorServer(t.cfg.MonitorAddr)
 		if err := t.monitor.start(ctx); err != nil {
 			_ = errors.Join(t.shutdownGracefulLocked(ctx)...)
+
 			return err
 		}
 	}
