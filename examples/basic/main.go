@@ -12,7 +12,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -30,7 +29,7 @@ func main() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := t.Shutdown(shutdownCtx); err != nil {
-			log.Printf("tel shutdown: %v", err)
+			tel.Error().Err(err).Msg("tel shutdown")
 		}
 	}()
 
@@ -39,11 +38,11 @@ func main() {
 
 	processed, err := registry.Counter("example.processed")
 	if err != nil {
-		log.Fatalf("create counter: %v", err)
+		tel.Fatal().Err(err).Msg("create counter")
 	}
 	latency, err := registry.Histogram("example.latency_seconds")
 	if err != nil {
-		log.Fatalf("create histogram: %v", err)
+		tel.Fatal().Err(err).Msg("create histogram")
 	}
 
 	ticker := time.NewTicker(200 * time.Millisecond)
@@ -77,6 +76,8 @@ func mustInit(ctx context.Context) *tel.Telemetry {
 	cfg.Version = "1.0.0"
 	cfg.Environment = "dev"
 	cfg.MonitorConfig.Enable = false
+	cfg.LogEncode = "console"
+	cfg.LogLevel = "info"
 
 	if os.Getenv("TEL_ENABLE") == "false" {
 		cfg.TelConfig.Enable = false
@@ -86,9 +87,10 @@ func mustInit(ctx context.Context) *tel.Telemetry {
 	}
 
 	t := tel.NewWithConfig(cfg)
+	tel.ConfigureLogger(cfg)
 	tel.SetGlobal(t)
 	if err := t.Start(ctx); err != nil {
-		log.Fatalf("start tel: %v", err)
+		tel.Fatal().Err(err).Msg("start tel")
 	}
 	return t
 }

@@ -19,7 +19,8 @@ import (
 var globalTelemetry atomic.Pointer[Telemetry]
 
 func init() {
-	globalTelemetry.Store(NewWithConfig(DefaultDebugConfig()))
+	// Placeholder global: debug/noop exporters, without forcing debug logging on every importer.
+	globalTelemetry.Store(newTelemetry(DefaultDebugConfig()))
 }
 
 func Global() *Telemetry {
@@ -57,6 +58,10 @@ func New() *Telemetry {
 }
 
 func NewWithConfig(cfg Config) *Telemetry {
+	return newTelemetry(cfg)
+}
+
+func newTelemetry(cfg Config) *Telemetry {
 	service := cfg.Service
 	if service == "" {
 		service = defaultServiceUnknown
@@ -140,7 +145,7 @@ func FromCtx(ctx context.Context) *Telemetry {
 }
 
 func (t *Telemetry) copy() *Telemetry {
-	return NewWithConfig(t.cfg)
+	return newTelemetry(t.cfg)
 }
 
 func (t *Telemetry) Config() Config {

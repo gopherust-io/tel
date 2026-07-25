@@ -141,6 +141,10 @@ linters:
           - gochecknoglobals
           - gochecknoinits
           - unused
+      - path: zlog\.go
+        linters:
+          - gochecknoglobals
+          - gochecknoinits
       - path: model\.go
         linters:
           - govet
