@@ -9,8 +9,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
@@ -29,6 +31,10 @@ func SetGlobal(t *Telemetry) {
 	globalTelemetry.Store(t)
 }
 
+// Telemetry is the process-wide metrics/traces runtime.
+// Telemetry is the process-wide metrics/traces runtime.
+//
+// goalign:ignore
 type Telemetry struct {
 	metricProvider metric.MeterProvider
 	traceProvider  trace.TracerProvider
@@ -39,8 +45,9 @@ type Telemetry struct {
 	shutdownFn     func(context.Context) error
 	traceShutdown  func(context.Context) error
 	cfg            Config
+	epoch          atomic.Uint64
+	mu             sync.RWMutex
 	started        atomic.Bool
-	shutdownOnce   sync.Once
 }
 
 type tKey struct{}
@@ -61,11 +68,27 @@ func NewWithConfig(cfg Config) *Telemetry {
 		cfg:            cfg,
 		metricProvider: provider,
 		traceProvider:  tracenoop.NewTracerProvider(),
-		registry:       newRegistry(provider.Meter(service)),
 	}
-	tel.refreshTracer()
+	tel.epoch.Store(0)
+	tel.registry = newRegistryWithCache(
+		provider.Meter(service),
+		newAttrCache(defaultMaxCardinality),
+		&tel.epoch,
+		0,
+		maxInstrumentsFromCfg(cfg),
+	)
+	tel.refreshTracerLocked()
 
 	return tel
+}
+
+func maxInstrumentsFromCfg(cfg Config) int {
+	n := cfg.Metrics.CardinalityDetector.MaxInstruments
+	if n <= 0 {
+		return defaultMaxInstruments
+	}
+
+	return n
 }
 
 func DefaultConfig() Config {
@@ -129,14 +152,25 @@ func (t *Telemetry) Start(ctx context.Context) error {
 		return nil
 	}
 
+	// Always install propagators so Inject/Extract work even when traces export is off.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	if t.cfg.TelConfig.Enable {
-		if err := t.startOTel(ctx); err != nil {
+		if err := t.startOTelLocked(ctx); err != nil {
+			t.started.Store(false)
+
 			return err
 		}
 	} else {
 		t.metricProvider = noop.NewMeterProvider()
 		t.traceProvider = tracenoop.NewTracerProvider()
-		t.refreshTracer()
+		t.refreshTracerLocked()
 	}
 
 	maxCardinality := t.cfg.Metrics.CardinalityDetector.MaxCardinality
@@ -144,8 +178,16 @@ func (t *Telemetry) Start(ctx context.Context) error {
 		maxCardinality = defaultMaxCardinality
 	}
 
+	// Bump epoch so pre-Start instruments no-op; callers must re-fetch after Start.
+	epoch := t.epoch.Add(1)
 	attrCache := newAttrCache(maxCardinality)
-	t.registry = newRegistryWithCache(t.metricProvider.Meter(t.cfg.Service), attrCache)
+	t.registry = newRegistryWithCache(
+		t.metricProvider.Meter(t.cfg.Service),
+		attrCache,
+		&t.epoch,
+		epoch,
+		maxInstrumentsFromCfg(t.cfg),
+	)
 
 	if t.cfg.Metrics.CardinalityDetector.Enable {
 		detectorCfg := t.cfg.Metrics.CardinalityDetector
@@ -161,10 +203,9 @@ func (t *Telemetry) Start(ctx context.Context) error {
 
 	if t.cfg.MonitorConfig.Enable {
 		t.monitor = newMonitorServer(t.cfg.MonitorAddr)
-
-		err := t.monitor.start()
-		if err != nil {
-			_ = t.Shutdown(ctx)
+		if err := t.monitor.start(ctx); err != nil {
+			_ = errors.Join(t.shutdownGracefulLocked(ctx)...)
+			t.started.Store(false)
 
 			return err
 		}
@@ -173,13 +214,11 @@ func (t *Telemetry) Start(ctx context.Context) error {
 	return nil
 }
 
-func (t *Telemetry) startOTel(ctx context.Context) error {
+func (t *Telemetry) startOTelLocked(ctx context.Context) error {
 	configureExportCompression(t.cfg.WithCompression)
 
 	provider, shutdown, err := newMeterProvider(ctx, t.cfg)
 	if err != nil {
-		t.started.Store(false)
-
 		return err
 	}
 
@@ -190,44 +229,43 @@ func (t *Telemetry) startOTel(ctx context.Context) error {
 	if err != nil {
 		if t.shutdownFn != nil {
 			_ = t.shutdownFn(ctx)
+			t.shutdownFn = nil
 		}
-
-		t.started.Store(false)
 
 		return err
 	}
 
 	t.traceProvider = traceProvider
 	t.traceShutdown = traceShutdown
-	t.refreshTracer()
+	t.refreshTracerLocked()
 
 	return nil
 }
 
+// Shutdown flushes exporters and releases resources. Safe to call after Start,
+// and again after a subsequent Start (restart-safe; not sync.Once).
 func (t *Telemetry) Shutdown(ctx context.Context) error {
-	var errs []error
+	if !t.started.CompareAndSwap(true, false) {
+		return nil
+	}
 
-	t.shutdownOnce.Do(func() {
-		if !t.started.Load() {
-			return
-		}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
-		errs = t.shutdownGraceful(ctx)
-	})
-
-	return errors.Join(errs...)
+	return errors.Join(t.shutdownGracefulLocked(ctx)...)
 }
 
-func (t *Telemetry) shutdownGraceful(ctx context.Context) []error {
+func (t *Telemetry) shutdownGracefulLocked(ctx context.Context) []error {
 	var errs []error
 
-	// Stop diagnostic sampling before flushing exporters.
+	// Invalidate instruments created before this shutdown.
+	t.epoch.Add(1)
+
 	if t.cardinality != nil {
 		t.cardinality.Stop()
 		t.cardinality = nil
 	}
 
-	// Flush and close OTLP exporters while the process is still healthy.
 	if t.shutdownFn != nil {
 		if shutdownErr := t.shutdownFn(ctx); shutdownErr != nil {
 			errs = append(errs, fmt.Errorf("metric provider shutdown: %w", shutdownErr))
@@ -254,21 +292,54 @@ func (t *Telemetry) shutdownGraceful(ctx context.Context) []error {
 
 	t.metricProvider = noop.NewMeterProvider()
 	t.traceProvider = tracenoop.NewTracerProvider()
-	t.refreshTracer()
-	t.registry = newRegistry(noop.NewMeterProvider().Meter("noop"))
-	t.started.Store(false)
+	t.refreshTracerLocked()
+	t.registry = newRegistryWithCache(
+		noop.NewMeterProvider().Meter("noop"),
+		newAttrCache(defaultMaxCardinality),
+		&t.epoch,
+		t.epoch.Load(),
+		maxInstrumentsFromCfg(t.cfg),
+	)
 
 	return errs
 }
 
 func (t *Telemetry) Meter(ins string, opts ...metric.MeterOption) metric.Meter {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
 	return t.metricProvider.Meter(ins, opts...)
 }
 
 func (t *Telemetry) Registry() *Registry {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
 	if t.registry == nil {
-		return newRegistry(t.metricProvider.Meter(t.cfg.Service))
+		return newRegistryWithCache(
+			t.metricProvider.Meter(t.cfg.Service),
+			newAttrCache(defaultMaxCardinality),
+			&t.epoch,
+			t.epoch.Load(),
+			maxInstrumentsFromCfg(t.cfg),
+		)
 	}
 
 	return t.registry
+}
+
+func (t *Telemetry) refreshTracerLocked() {
+	if t.traceProvider == nil {
+		t.tracer = otel.Tracer(t.cfg.Service)
+
+		return
+	}
+
+	t.tracer = t.traceProvider.Tracer(t.cfg.Service)
+}
+
+func (t *Telemetry) refreshTracer() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.refreshTracerLocked()
 }

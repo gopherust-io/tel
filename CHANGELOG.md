@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Restart-safe `Shutdown` (Start→Shutdown→Start→Shutdown).
+- Synchronize provider/registry/tracer access across Start/Shutdown/hot paths.
+- AttrCache: reserve cardinality slots before insert (`Len() <= max` under race).
+- Pre-Start instruments no-op after `Start` (epoch); re-fetch after Start.
+- Enforce `MaxInstruments` on registry create; always set TraceContext+Baggage propagator on Start.
+- `EndSpan(nil)` is safe; monitor bind failures fail `Start`; stats encode-then-write once.
+
 ## v0.1.1
 
 - Optimize tracing inject/extract (`headerCarrier.Set` reuses single-value slices).

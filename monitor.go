@@ -1,9 +1,11 @@
 package tel
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"runtime"
 	"sync"
@@ -21,10 +23,16 @@ func newMonitorServer(addr string) *monitorServer {
 	return &monitorServer{addr: addr}
 }
 
-func (m *monitorServer) start() error {
+func (m *monitorServer) start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthHandler)
 	mux.HandleFunc("/stats", statsHandler)
+
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", m.addr)
+	if err != nil {
+		return err
+	}
 
 	m.server = &http.Server{
 		Addr:              m.addr,
@@ -33,9 +41,9 @@ func (m *monitorServer) start() error {
 	}
 
 	go func() {
-		serveErr := m.server.ListenAndServe()
+		serveErr := m.server.Serve(ln)
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			_ = serveErr // auxiliary server; errors are non-fatal
+			_ = serveErr // auxiliary server; bind succeeded, serve errors are non-fatal
 		}
 	}()
 
@@ -80,10 +88,14 @@ func statsHandler(w http.ResponseWriter, _ *http.Request) {
 	payload.Memory.TotalAllocBytes = ms.TotalAlloc
 	payload.Memory.SysBytes = ms.Sys
 
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(payload); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	_, _ = w.Write(buf.Bytes())
 }

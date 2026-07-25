@@ -7,6 +7,8 @@ import (
 // Config holds process-wide telemetry settings.
 // Embedded configs stay first (embeddedstructfieldcheck); fieldalignment is
 // excluded for this file in .golangci.yml and make align.
+//
+// goalign:ignore
 type Config struct {
 	MonitorConfig
 	TelConfig
@@ -20,11 +22,17 @@ type Config struct {
 	Debug       bool   `env:"DEBUG"              envDefault:"false"`
 }
 
+// MonitorConfig holds health/stats monitor settings.
+//
+// goalign:ignore
 type MonitorConfig struct {
 	MonitorAddr string `env:"MONITOR_ADDR"   envDefault:"0.0.0.0:8011"`
 	Enable      bool   `env:"MONITOR_ENABLE" envDefault:"true"`
 }
 
+// TelConfig holds OTLP export and related collector settings.
+//
+// goalign:ignore
 type TelConfig struct {
 	Address    string `env:"TEL_COLLECTOR_GRPC_ADDR"       envDefault:"127.0.0.1:4317"`
 	ServerName string `env:"TEL_COLLECTOR_TLS_SERVER_NAME"`

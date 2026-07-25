@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// goalign:ignore
 type cardinalitySettings struct {
 	MaxCardinality     int
 	MaxInstruments     int

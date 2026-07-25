@@ -2,7 +2,9 @@ package tel
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -10,48 +12,74 @@ import (
 )
 
 type FastCounter struct {
-	counter metric.Int64Counter
-	cache   *AttrCache
-	opts    []metric.AddOption
+	counter  metric.Int64Counter
+	cache    *AttrCache
+	epochPtr *atomic.Uint64
+	opts     []metric.AddOption
+	epoch    uint64
 }
 
 type FastHistogram struct {
 	histogram  metric.Float64Histogram
 	cache      *AttrCache
+	epochPtr   *atomic.Uint64
 	recordOpts []metric.RecordOption
+	epoch      uint64
 }
 
 type FastGauge struct {
 	gauge      metric.Int64Gauge
 	cache      *AttrCache
+	epochPtr   *atomic.Uint64
 	recordOpts []metric.RecordOption
+	epoch      uint64
 }
 
 type Registry struct {
-	meter    metric.Meter
-	cache    *AttrCache
-	counters map[string]*FastCounter
-	hists    map[string]*FastHistogram
-	gauges   map[string]*FastGauge
-	mu       sync.RWMutex
+	meter          metric.Meter
+	cache          *AttrCache
+	epochPtr       *atomic.Uint64
+	counters       map[string]*FastCounter
+	hists          map[string]*FastHistogram
+	gauges         map[string]*FastGauge
+	epoch          uint64
+	maxInstruments int
+	mu             sync.RWMutex
 }
 
 func newRegistry(meter metric.Meter) *Registry {
-	return newRegistryWithCache(meter, newAttrCache(defaultMaxCardinality))
+	return newRegistryWithCache(meter, newAttrCache(defaultMaxCardinality), nil, 0, defaultMaxInstruments)
 }
 
-func newRegistryWithCache(meter metric.Meter, cache *AttrCache) *Registry {
+func newRegistryWithCache(
+	meter metric.Meter,
+	cache *AttrCache,
+	epochPtr *atomic.Uint64,
+	epoch uint64,
+	maxInstruments int,
+) *Registry {
+	if maxInstruments <= 0 {
+		maxInstruments = defaultMaxInstruments
+	}
+
 	return &Registry{
-		meter:    meter,
-		cache:    cache,
-		counters: make(map[string]*FastCounter),
-		hists:    make(map[string]*FastHistogram),
-		gauges:   make(map[string]*FastGauge),
+		meter:          meter,
+		cache:          cache,
+		counters:       make(map[string]*FastCounter),
+		hists:          make(map[string]*FastHistogram),
+		gauges:         make(map[string]*FastGauge),
+		epoch:          epoch,
+		epochPtr:       epochPtr,
+		maxInstruments: maxInstruments,
 	}
 }
 
 func (r *Registry) AttrCache() *AttrCache {
 	return r.cache
+}
+
+func (r *Registry) instrumentCount() int {
+	return len(r.counters) + len(r.hists) + len(r.gauges)
 }
 
 func (r *Registry) Counter(name string, opts ...metric.Int64CounterOption) (*FastCounter, error) {
@@ -70,13 +98,24 @@ func (r *Registry) Counter(name string, opts ...metric.Int64CounterOption) (*Fas
 		return nil, err
 	}
 
-	fast := &FastCounter{counter: counter, cache: r.cache}
+	fast := &FastCounter{
+		counter:  counter,
+		cache:    r.cache,
+		epoch:    r.epoch,
+		epochPtr: r.epochPtr,
+	}
 	r.mu.Lock()
 
 	if existing, ok := r.counters[name]; ok {
 		r.mu.Unlock()
 
 		return existing, nil
+	}
+
+	if r.instrumentCount() >= r.maxInstruments {
+		r.mu.Unlock()
+
+		return nil, fmt.Errorf("tel: max instruments (%d) exceeded", r.maxInstruments)
 	}
 
 	r.counters[name] = fast
@@ -101,13 +140,24 @@ func (r *Registry) Histogram(name string, opts ...metric.Float64HistogramOption)
 		return nil, err
 	}
 
-	fast := &FastHistogram{histogram: histogram, cache: r.cache}
+	fast := &FastHistogram{
+		histogram: histogram,
+		cache:     r.cache,
+		epoch:     r.epoch,
+		epochPtr:  r.epochPtr,
+	}
 	r.mu.Lock()
 
 	if existing, ok := r.hists[name]; ok {
 		r.mu.Unlock()
 
 		return existing, nil
+	}
+
+	if r.instrumentCount() >= r.maxInstruments {
+		r.mu.Unlock()
+
+		return nil, fmt.Errorf("tel: max instruments (%d) exceeded", r.maxInstruments)
 	}
 
 	r.hists[name] = fast
@@ -132,7 +182,12 @@ func (r *Registry) Gauge(name string, opts ...metric.Int64GaugeOption) (*FastGau
 		return nil, err
 	}
 
-	fast := &FastGauge{gauge: gauge, cache: r.cache}
+	fast := &FastGauge{
+		gauge:    gauge,
+		cache:    r.cache,
+		epoch:    r.epoch,
+		epochPtr: r.epochPtr,
+	}
 	r.mu.Lock()
 
 	if existing, ok := r.gauges[name]; ok {
@@ -141,21 +196,45 @@ func (r *Registry) Gauge(name string, opts ...metric.Int64GaugeOption) (*FastGau
 		return existing, nil
 	}
 
+	if r.instrumentCount() >= r.maxInstruments {
+		r.mu.Unlock()
+
+		return nil, fmt.Errorf("tel: max instruments (%d) exceeded", r.maxInstruments)
+	}
+
 	r.gauges[name] = fast
 	r.mu.Unlock()
 
 	return fast, nil
 }
 
+func (c *FastCounter) live() bool {
+	return c.epochPtr == nil || c.epochPtr.Load() == c.epoch
+}
+
+func (h *FastHistogram) live() bool {
+	return h.epochPtr == nil || h.epochPtr.Load() == h.epoch
+}
+
+func (g *FastGauge) live() bool {
+	return g.epochPtr == nil || g.epochPtr.Load() == g.epoch
+}
+
 func (c *FastCounter) WithAttrs(attrs attribute.Set) *FastCounter {
 	return &FastCounter{
-		counter: c.counter,
-		opts:    attrsToAddOpts(attrs),
-		cache:   c.cache,
+		counter:  c.counter,
+		opts:     attrsToAddOpts(attrs),
+		cache:    c.cache,
+		epoch:    c.epoch,
+		epochPtr: c.epochPtr,
 	}
 }
 
 func (c *FastCounter) Add(ctx context.Context, n int64) {
+	if !c.live() {
+		return
+	}
+
 	if len(c.opts) > 0 {
 		c.counter.Add(ctx, n, c.opts...)
 
@@ -166,6 +245,10 @@ func (c *FastCounter) Add(ctx context.Context, n int64) {
 }
 
 func (c *FastCounter) AddWith(ctx context.Context, n int64, subject string) {
+	if !c.live() {
+		return
+	}
+
 	if subject == "" {
 		c.Add(ctx, n)
 
@@ -180,10 +263,16 @@ func (h *FastHistogram) WithAttrs(attrs attribute.Set) *FastHistogram {
 		histogram:  h.histogram,
 		recordOpts: attrsToRecordOpts(attrs),
 		cache:      h.cache,
+		epoch:      h.epoch,
+		epochPtr:   h.epochPtr,
 	}
 }
 
 func (h *FastHistogram) Record(ctx context.Context, value float64) {
+	if !h.live() {
+		return
+	}
+
 	if len(h.recordOpts) > 0 {
 		h.histogram.Record(ctx, value, h.recordOpts...)
 
@@ -194,6 +283,10 @@ func (h *FastHistogram) Record(ctx context.Context, value float64) {
 }
 
 func (h *FastHistogram) RecordWith(ctx context.Context, value float64, subject string) {
+	if !h.live() {
+		return
+	}
+
 	if subject == "" {
 		h.Record(ctx, value)
 
@@ -208,10 +301,16 @@ func (g *FastGauge) WithAttrs(attrs attribute.Set) *FastGauge {
 		gauge:      g.gauge,
 		recordOpts: attrsToRecordOpts(attrs),
 		cache:      g.cache,
+		epoch:      g.epoch,
+		epochPtr:   g.epochPtr,
 	}
 }
 
 func (g *FastGauge) Record(ctx context.Context, value int64) {
+	if !g.live() {
+		return
+	}
+
 	if len(g.recordOpts) > 0 {
 		g.gauge.Record(ctx, value, g.recordOpts...)
 
@@ -222,6 +321,10 @@ func (g *FastGauge) Record(ctx context.Context, value int64) {
 }
 
 func (g *FastGauge) RecordWith(ctx context.Context, value int64, subject string) {
+	if !g.live() {
+		return
+	}
+
 	if subject == "" {
 		g.Record(ctx, value)
 

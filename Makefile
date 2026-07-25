@@ -5,10 +5,23 @@ NPROCS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/
 GO_TEST_FLAGS := -count=1 -parallel=$(NPROCS) -timeout=60s
 COVERAGE_MIN ?= 70
 
-.PHONY: help test test-race coverage coverage-html bench ci vet fmt fmt-check lint lint-fix govulncheck examples demo
+.PHONY: help test test-race coverage coverage-html bench ci vet fmt fmt-check lint lint-fix govulncheck align examples demo
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@v1.6.0
+GOALIGN_VERSION := v1.1.0
+GOALIGN_BIN := $(CURDIR)/.cache/goalign-$(GOALIGN_VERSION)
+GOALIGN_FLAGS := analyze -r --arch=amd64 --fail-on-findings --min-waste=1 -e examples/ .
+
+$(GOALIGN_BIN):
+	@mkdir -p $(dir $@)
+	@tmpdir=$$(mktemp -d) && \
+		curl -fsSL https://github.com/gopherust-io/goalign/archive/refs/tags/$(GOALIGN_VERSION).tar.gz | tar -xz -C $$tmpdir && \
+		(cd $$tmpdir/goalign-$(patsubst v%,%,$(GOALIGN_VERSION)) && go build -o $(GOALIGN_BIN) .) && \
+		rm -rf $$tmpdir
+
+align: $(GOALIGN_BIN)
+	$(GOALIGN_BIN) $(GOALIGN_FLAGS)
 
 help:
 	@echo "Targets:"
@@ -21,7 +34,8 @@ help:
 	@echo "  ci                fmt-check + unit tests + race + vet + lint"
 	@echo "  fmt               gofmt -w"
 	@echo "  fmt-check         fail if any file needs gofmt"
-	@echo "  lint              govulncheck + golangci-lint"
+	@echo "  lint              govulncheck + golangci-lint + goalign"
+	@echo "  align             Fail if goalign finds waste >= 1 byte (excludes examples/)"
 	@echo "  examples          Build example programs"
 
 demo:
@@ -58,7 +72,7 @@ fmt:
 fmt-check:
 	@test -z "$$(gofmt -l .)" || (gofmt -l . && exit 1)
 
-lint: govulncheck
+lint: govulncheck align
 	$(GOLANGCI_LINT) run ./...
 
 lint-fix:

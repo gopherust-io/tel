@@ -92,11 +92,16 @@ Prefer `MessagingSystem` / `MessagingSubject` (and friends) over hand-rolled att
 
 Compression sets the process-wide gRPC `gzip` level. Default export is insecure—fine for a local collector; use `TelConfig.Raw` PEM for TLS/mTLS.
 
+## Lifecycle
+
+Call `Start` before recording. Instruments obtained **before** `Start` are invalidated when `Start` runs—re-fetch via `Registry()` afterward. `Shutdown` is restart-safe (`Start` → `Shutdown` → `Start` → `Shutdown`).
+
 ## Do not
 
 1. Put network I/O, locks, or attribute allocation on the record path.
 2. Pass unbounded strings (user IDs, raw URLs) as `*With` subjects.
 3. Skip `Start` on a production `DefaultConfig()` and assume metrics still export.
+4. Keep using Counter/Histogram handles created before `Start`.
 
 ## Development
 

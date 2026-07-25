@@ -20,11 +20,15 @@ var (
 
 // Tracer returns a named tracer from the configured provider.
 func (t *Telemetry) Tracer(name string) trace.Tracer {
-	if t.traceProvider == nil {
+	t.mu.RLock()
+	tp := t.traceProvider
+	t.mu.RUnlock()
+
+	if tp == nil {
 		return otel.Tracer(name)
 	}
 
-	return t.traceProvider.Tracer(name)
+	return tp.Tracer(name)
 }
 
 // StartSpan starts a span on the telemetry tracer provider.
@@ -34,24 +38,18 @@ func (t *Telemetry) StartSpan(
 	spanName string,
 	opts ...trace.SpanStartOption,
 ) (context.Context, trace.Span) {
+	t.mu.RLock()
 	tr := t.tracer
+	service := t.cfg.Service
+	t.mu.RUnlock()
+
 	if tr == nil {
-		tr = t.Tracer(t.cfg.Service)
+		tr = t.Tracer(service)
 	}
 
 	ctx, span := tr.Start(ctx, spanName, opts...) //nolint:spancheck // caller ends span
 
 	return ctx, span //nolint:spancheck // caller ends span
-}
-
-func (t *Telemetry) refreshTracer() {
-	if t.traceProvider == nil {
-		t.tracer = otel.Tracer(t.cfg.Service)
-
-		return
-	}
-
-	t.tracer = t.traceProvider.Tracer(t.cfg.Service)
 }
 
 // propagator returns the global text map propagator.
@@ -62,8 +60,10 @@ func propagator() propagation.TextMapPropagator {
 // NewWithTracerProvider wires a custom tracer provider (useful in tests and custom setups).
 func NewWithTracerProvider(cfg Config, provider trace.TracerProvider) *Telemetry {
 	tel := NewWithConfig(cfg)
+	tel.mu.Lock()
 	tel.traceProvider = provider
-	tel.refreshTracer()
+	tel.refreshTracerLocked()
+	tel.mu.Unlock()
 	tel.started.Store(true)
 
 	return tel
@@ -91,6 +91,10 @@ func ExtractContext(ctx context.Context, headers map[string][]string) context.Co
 
 // EndSpan ends a span and records an error when present.
 func EndSpan(span trace.Span, err error) {
+	if span == nil {
+		return
+	}
+
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

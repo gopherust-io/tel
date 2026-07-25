@@ -97,16 +97,17 @@ func (c *AttrCache) entry(subject string) subjectEntry {
 			return entry
 		}
 
-		if int(c.size.Load()) >= c.maxEntries {
+		// Reserve a slot before mutating the map so Len() never exceeds maxEntries.
+		sz := c.size.Load()
+		if int(sz) >= c.maxEntries {
 			if c.detector != nil {
 				c.detector.ObserveMiss(subject, true)
 			}
 
 			return c.overflowEntry()
 		}
-
-		if c.detector != nil {
-			c.detector.ObserveMiss(subject, false)
+		if !c.size.CompareAndSwap(sz, sz+1) {
+			continue
 		}
 
 		attrs := attribute.NewSet(attribute.String("subject", subject))
@@ -116,18 +117,28 @@ func (c *AttrCache) entry(subject string) subjectEntry {
 			recordOpts: []metric.RecordOption{metric.WithAttributeSet(attrs)},
 		}
 
-		next := make(map[string]subjectEntry, len(*cur)+1)
-		for k, v := range *cur {
-			next[k] = v
-		}
-		next[subject] = entry
+		for {
+			cur = s.cache.Load()
+			if existing, ok := (*cur)[subject]; ok {
+				c.size.Add(-1)
 
-		if s.cache.CompareAndSwap(cur, &next) {
-			c.size.Add(1)
+				return existing
+			}
 
-			return entry
+			next := make(map[string]subjectEntry, len(*cur)+1)
+			for k, v := range *cur {
+				next[k] = v
+			}
+			next[subject] = entry
+
+			if s.cache.CompareAndSwap(cur, &next) {
+				if c.detector != nil {
+					c.detector.ObserveMiss(subject, false)
+				}
+
+				return entry
+			}
 		}
-		// Lost the race: retry — either the subject is present or we insert again.
 	}
 }
 

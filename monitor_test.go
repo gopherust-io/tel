@@ -11,7 +11,7 @@ import (
 
 func TestMonitorHealthAndStats(t *testing.T) {
 	monitor := newMonitorServer("127.0.0.1:0")
-	require.NoError(t, monitor.start())
+	require.NoError(t, monitor.start(context.Background()))
 
 	// Allow server to bind; use configured addr may be :0 so hit default path via direct handlers.
 	req := httptestHealthRequest(t, healthHandler)
