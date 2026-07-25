@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
-	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
@@ -157,10 +156,7 @@ func (t *Telemetry) Start(ctx context.Context) error {
 	}
 
 	// Always install propagators so Inject/Extract work even when traces export is off.
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	))
+	installPropagator()
 
 	if t.cfg.TelConfig.Enable {
 		if err := t.startOTelLocked(ctx); err != nil {

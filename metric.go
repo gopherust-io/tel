@@ -111,11 +111,7 @@ func (c *AttrCache) entry(subject string) subjectEntry {
 		}
 
 		attrs := attribute.NewSet(attribute.String("subject", subject))
-		entry := subjectEntry{
-			attrs:      attrs,
-			addOpts:    []metric.AddOption{metric.WithAttributeSet(attrs)},
-			recordOpts: []metric.RecordOption{metric.WithAttributeSet(attrs)},
-		}
+		entry := newSubjectEntry(attrs)
 
 		for {
 			cur = s.cache.Load()
@@ -149,14 +145,18 @@ func (c *AttrCache) Len() int {
 func (c *AttrCache) overflowEntry() subjectEntry {
 	c.overflowOnce.Do(func() {
 		attrs := attribute.NewSet(attribute.String("subject", overflowSubject))
-		c.overflow = subjectEntry{
-			attrs:      attrs,
-			addOpts:    []metric.AddOption{metric.WithAttributeSet(attrs)},
-			recordOpts: []metric.RecordOption{metric.WithAttributeSet(attrs)},
-		}
+		c.overflow = newSubjectEntry(attrs)
 	})
 
 	return c.overflow
+}
+
+func newSubjectEntry(attrs attribute.Set) subjectEntry {
+	return subjectEntry{
+		attrs:      attrs,
+		addOpts:    []metric.AddOption{metric.WithAttributeSet(attrs)},
+		recordOpts: []metric.RecordOption{metric.WithAttributeSet(attrs)},
+	}
 }
 
 func attrsToAddOpts(attrs attribute.Set) []metric.AddOption {

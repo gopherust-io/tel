@@ -108,7 +108,8 @@ func (d *cardinalityDetector) run() {
 func (d *cardinalityDetector) report() {
 	cacheLen := d.cache.Len()
 	if cacheLen >= d.cfg.MaxCardinality {
-		slog.Warn("telemetry cardinality limit reached",
+		slog.Warn(
+			"telemetry cardinality limit reached",
 			slog.Int("cache_entries", cacheLen),
 			slog.Int("max_cardinality", d.cfg.MaxCardinality),
 			slog.Int64("records", d.records.Load()),
