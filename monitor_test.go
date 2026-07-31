@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/gopherust-io/tel/internal/bytesconv"
 )
 
 func TestMonitorHealthAndStats(t *testing.T) {
@@ -63,6 +65,6 @@ func (r *responseRecorder) WriteHeader(statusCode int) {
 }
 
 func (r *responseRecorder) Write(b []byte) (int, error) {
-	r.body += string(b)
+	r.body += bytesconv.BytesToString(b)
 	return len(b), nil
 }

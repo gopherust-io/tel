@@ -2,8 +2,11 @@ package tel
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -16,11 +19,116 @@ var (
 )
 
 func init() {
-	defaultLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+	zerolog.CallerMarshalFunc = marshalCaller
+	zerolog.ErrorStackMarshaler = marshalErrorStack //nolint:reassign // configure process-wide zerolog stack marshaler
+	defaultLogger := newLogger(os.Stdout)
 	logger.Store(&defaultLogger)
 	zerolog.DefaultContextLogger = &defaultLogger
 	fn := os.Exit
 	exitFn.Store(&fn)
+}
+
+func marshalCaller(pc uintptr, _ string, line int) string {
+	name := "???"
+	if fn := runtime.FuncForPC(pc); fn != nil {
+		name = fn.Name()
+		if i := strings.LastIndex(name, "/"); i >= 0 {
+			name = name[i+1:]
+		}
+	}
+
+	return name + ":" + strconv.Itoa(line)
+}
+
+type uintptrStackTracer interface {
+	StackTrace() []uintptr
+}
+
+func marshalErrorStack(err error) interface{} {
+	if err == nil {
+		return nil
+	}
+	if frames := stackFromTracer(err); len(frames) > 0 {
+		return frames
+	}
+
+	return captureRuntimeStack()
+}
+
+func stackFromTracer(err error) []map[string]string {
+	for err != nil {
+		if st, ok := err.(uintptrStackTracer); ok {
+			return framesFromPCs(st.StackTrace())
+		}
+		err = errors.Unwrap(err)
+	}
+
+	return nil
+}
+
+func captureRuntimeStack() []map[string]string {
+	var pcs [64]uintptr
+	// Skip Callers + captureRuntimeStack.
+	n := runtime.Callers(2, pcs[:])
+	if n == 0 {
+		return nil
+	}
+
+	return framesFromPCs(pcs[:n])
+}
+
+func framesFromPCs(pcs []uintptr) []map[string]string {
+	if len(pcs) == 0 {
+		return nil
+	}
+	frames := runtime.CallersFrames(pcs)
+	out := make([]map[string]string, 0, len(pcs))
+	for {
+		frame, more := frames.Next()
+		if frame.Function != "" && !skipStackFrame(frame.Function) {
+			name := frame.Function
+			if i := strings.LastIndex(name, "/"); i >= 0 {
+				name = name[i+1:]
+			}
+			file := frame.File
+			if i := strings.LastIndex(file, "/"); i >= 0 {
+				file = file[i+1:]
+			}
+			out = append(out, map[string]string{
+				"func":   name,
+				"line":   strconv.Itoa(frame.Line),
+				"source": file,
+			})
+		}
+		if !more {
+			break
+		}
+	}
+
+	return out
+}
+
+func skipStackFrame(fn string) bool {
+	switch {
+	case strings.Contains(fn, "github.com/rs/zerolog"):
+		return true
+	case strings.Contains(fn, "marshalErrorStack"):
+		return true
+	case strings.Contains(fn, "captureRuntimeStack"):
+		return true
+	case strings.Contains(fn, "stackFromTracer"):
+		return true
+	case strings.Contains(fn, "framesFromPCs"):
+		return true
+	case strings.Contains(fn, "tel.(*FatalEvent).Err"):
+		return true
+	default:
+		return false
+	}
+}
+
+func newLogger(out io.Writer) zerolog.Logger {
+	return zerolog.New(out).With().Timestamp().Caller().Stack().Logger()
 }
 
 // LoggerOptions configures the process-global zerolog logger.
@@ -43,8 +151,7 @@ func InitLogger(opts LoggerOptions) {
 	if !opts.JSON {
 		out = zerolog.ConsoleWriter{Out: os.Stdout}
 	}
-	l := zerolog.New(out).With().Timestamp().Logger()
-	SetLogger(l)
+	SetLogger(newLogger(out))
 }
 
 // applyLoggerFromConfig maps Config.LogLevel / LogEncode onto InitLogger.
@@ -106,7 +213,8 @@ func Error() *zerolog.Event {
 
 // Fatal logs at fatal level and invokes the configured exit function (default os.Exit).
 func Fatal() *FatalEvent {
-	return &FatalEvent{e: getLogger().WithLevel(zerolog.FatalLevel)}
+	// Skip FatalEvent.Msg/Msgf so caller points at the user site.
+	return &FatalEvent{e: getLogger().WithLevel(zerolog.FatalLevel).CallerSkipFrame(1)}
 }
 
 // FatalEvent mirrors zerolog's chainable API but exits via SetExitFunc instead of os.Exit directly.

@@ -9,6 +9,8 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/gopherust-io/tel/internal/bytesconv"
 )
 
 type FastCounter struct {
@@ -242,7 +244,7 @@ func (c *FastCounter) AddWith(ctx context.Context, n int64, subject string) {
 		return
 	}
 
-	if subject == "" {
+	if bytesconv.IsEmpty(subject) {
 		c.Add(ctx, n)
 
 		return
@@ -290,7 +292,7 @@ func (h *FastHistogram) RecordWith(ctx context.Context, value float64, subject s
 		return
 	}
 
-	if subject == "" {
+	if bytesconv.IsEmpty(subject) {
 		h.Record(ctx, value)
 
 		return
@@ -338,7 +340,7 @@ func (g *FastGauge) RecordWith(ctx context.Context, value int64, subject string)
 		return
 	}
 
-	if subject == "" {
+	if bytesconv.IsEmpty(subject) {
 		g.Record(ctx, value)
 
 		return

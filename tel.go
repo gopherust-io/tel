@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/gopherust-io/tel/internal/bytesconv"
 )
 
 var globalTelemetry atomic.Pointer[Telemetry]
@@ -63,7 +65,7 @@ func NewWithConfig(cfg Config) *Telemetry {
 
 func newTelemetry(cfg Config) *Telemetry {
 	service := cfg.Service
-	if service == "" {
+	if bytesconv.IsEmpty(service) {
 		service = defaultServiceUnknown
 	}
 

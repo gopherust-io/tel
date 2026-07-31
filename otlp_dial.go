@@ -6,6 +6,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+
+	"github.com/gopherust-io/tel/internal/bytesconv"
 )
 
 // otlpDial holds shared OTLP gRPC dial settings for metric and trace exporters.
@@ -19,7 +21,7 @@ type otlpDial struct {
 }
 
 func otlpDialSettings(cfg TelConfig) (otlpDial, error) {
-	useTLS := cfg.ServerName != "" || len(cfg.Raw.CA) > 0 || len(cfg.Raw.Cert) > 0 || len(cfg.Raw.Key) > 0
+	useTLS := !bytesconv.IsEmpty(cfg.ServerName) || len(cfg.Raw.CA) > 0 || len(cfg.Raw.Cert) > 0 || len(cfg.Raw.Key) > 0
 	dial := otlpDial{
 		endpoint: cfg.Address,
 		compress: cfg.WithCompression,

@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## v0.2.0
 
+- Replace slog / stdlib log with process-global zerolog (`InitLogger` / `ConfigureLogger`, `Info()` / `Ctx(ctx)`).
+- Logger caller as `funcName:line`; `Err(err)` emits a `stack` field (func/file/line frames).
 - Restart-safe `Shutdown` (Start→Shutdown→Start→Shutdown).
 - Synchronize provider/registry/tracer access across Start/Shutdown/hot paths.
 - AttrCache: reserve cardinality slots before insert (`Len() <= max` under race).
