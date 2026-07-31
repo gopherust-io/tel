@@ -34,7 +34,6 @@ func SetGlobal(t *Telemetry) {
 }
 
 // Telemetry is the process-wide metrics/traces runtime.
-// Telemetry is the process-wide metrics/traces runtime.
 //
 // goalign:ignore
 type Telemetry struct {

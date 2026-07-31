@@ -1,12 +1,4 @@
-// Basic example: tel lifecycle and low-allocation metrics.
-//
-// Run:
-//
-//	go run ./examples/basic
-//
-// With OTLP export (collector on 127.0.0.1:4317):
-//
-//	TEL_ENABLE=true go run ./examples/basic
+// Example of tel lifecycle and subject-keyed metrics.
 package main
 
 import (

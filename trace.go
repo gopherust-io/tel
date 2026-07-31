@@ -18,7 +18,6 @@ var (
 	messagingDestKey    = attribute.Key("messaging.destination")
 )
 
-// Tracer returns a named tracer from the configured provider.
 func (t *Telemetry) Tracer(name string) trace.Tracer {
 	t.mu.RLock()
 	tp := t.traceProvider
@@ -52,7 +51,6 @@ func (t *Telemetry) StartSpan(
 	return ctx, span //nolint:spancheck // caller ends span
 }
 
-// propagator returns the global text map propagator.
 func propagator() propagation.TextMapPropagator {
 	return otel.GetTextMapPropagator()
 }
@@ -69,7 +67,6 @@ func NewWithTracerProvider(cfg Config, provider trace.TracerProvider) *Telemetry
 	return tel
 }
 
-// InjectContext writes trace context into a string header map.
 func InjectContext(ctx context.Context, headers map[string][]string) map[string][]string {
 	if headers == nil {
 		headers = make(map[string][]string, 2)
@@ -80,7 +77,6 @@ func InjectContext(ctx context.Context, headers map[string][]string) map[string]
 	return headers
 }
 
-// ExtractContext reads trace context from a string header map.
 func ExtractContext(ctx context.Context, headers map[string][]string) context.Context {
 	if len(headers) == 0 {
 		return ctx
@@ -89,7 +85,6 @@ func ExtractContext(ctx context.Context, headers map[string][]string) context.Co
 	return propagator().Extract(ctx, headerCarrier(headers))
 }
 
-// EndSpan ends a span and records an error when present.
 func EndSpan(span trace.Span, err error) {
 	if span == nil {
 		return
@@ -103,7 +98,6 @@ func EndSpan(span trace.Span, err error) {
 	span.End()
 }
 
-// MessagingSubject returns a messaging destination attribute for NATS spans.
 func MessagingSubject(subject string) attribute.KeyValue {
 	return messagingDestKey.String(subject)
 }

@@ -164,15 +164,13 @@ func InitLogger(opts LoggerOptions) {
 	SetLogger(newLogger(out))
 }
 
-// applyConsoleLevelColors sets zerolog console level colors once:
-// debug=blue, info=green, warn=yellow, error=red, fatal/panic=magenta (purple).
 func applyConsoleLevelColors() {
 	consoleColorsOnce.Do(func() {
-		zerolog.LevelColors[zerolog.DebugLevel] = 34 // blue
-		zerolog.LevelColors[zerolog.InfoLevel] = 32  // green
-		zerolog.LevelColors[zerolog.WarnLevel] = 33  // yellow
-		zerolog.LevelColors[zerolog.ErrorLevel] = 31 // red
-		zerolog.LevelColors[zerolog.FatalLevel] = 35 // magenta / purple
+		zerolog.LevelColors[zerolog.DebugLevel] = 34
+		zerolog.LevelColors[zerolog.InfoLevel] = 32
+		zerolog.LevelColors[zerolog.WarnLevel] = 33
+		zerolog.LevelColors[zerolog.ErrorLevel] = 31
+		zerolog.LevelColors[zerolog.FatalLevel] = 35
 		zerolog.LevelColors[zerolog.PanicLevel] = 35
 	})
 }
@@ -193,7 +191,6 @@ func ConfigureLogger(cfg Config) {
 	applyLoggerFromConfig(cfg)
 }
 
-// Logger returns the process-global logger.
 func Logger() zerolog.Logger {
 	return *logger.Load()
 }
@@ -208,7 +205,6 @@ func SetLogger(l zerolog.Logger) {
 	zerolog.DefaultContextLogger = &l
 }
 
-// Ctx returns the logger from ctx, falling back to DefaultContextLogger.
 func Ctx(ctx context.Context) *zerolog.Logger {
 	return zerolog.Ctx(ctx)
 }
