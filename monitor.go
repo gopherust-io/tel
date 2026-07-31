@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
+
+	"github.com/gopherust-io/tel/internal/bytesconv"
 )
 
-var healthOK = []byte(`{"status":"ok"}`)
+var healthOK = bytesconv.StringToBytes(`{"status":"ok"}`)
 
 type monitorServer struct {
 	server *http.Server

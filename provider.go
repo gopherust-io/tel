@@ -13,6 +13,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"google.golang.org/grpc/credentials"
+
+	"github.com/gopherust-io/tel/internal/bytesconv"
 )
 
 func newMeterProvider(ctx context.Context, cfg Config) (metric.MeterProvider, func(context.Context) error, error) {
@@ -76,7 +78,7 @@ func tlsConfigFromRaw(cfg TelConfig) (*tls.Config, error) {
 	tlsCfg := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 	}
-	if cfg.ServerName != "" {
+	if !bytesconv.IsEmpty(cfg.ServerName) {
 		tlsCfg.ServerName = cfg.ServerName
 	}
 
@@ -103,22 +105,22 @@ func tlsConfigFromRaw(cfg TelConfig) (*tls.Config, error) {
 
 func newResource(cfg Config) *resource.Resource {
 	service := cfg.Service
-	if service == "" {
+	if bytesconv.IsEmpty(service) {
 		service = defaultServiceUnknown
 	}
 
 	version := cfg.Version
-	if version == "" {
+	if bytesconv.IsEmpty(version) {
 		version = defaultVersion
 	}
 
 	namespace := cfg.Namespace
-	if namespace == "" {
+	if bytesconv.IsEmpty(namespace) {
 		namespace = defaultNamespace
 	}
 
 	environment := cfg.Environment
-	if environment == "" {
+	if bytesconv.IsEmpty(environment) {
 		environment = defaultEnvironment
 	}
 
@@ -138,7 +140,7 @@ func viewsFromBucketView(buckets []HistogramOpt) []sdkmetric.View {
 
 	views := make([]sdkmetric.View, 0, len(buckets))
 	for _, bucket := range buckets {
-		if bucket.Name == "" || len(bucket.Boundaries) == 0 {
+		if bytesconv.IsEmpty(bucket.Name) || len(bucket.Boundaries) == 0 {
 			continue
 		}
 

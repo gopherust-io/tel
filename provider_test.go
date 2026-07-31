@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	"github.com/gopherust-io/tel/internal/bytesconv"
 )
 
 func TestNewMeterProviderDisabledUsesNoop(t *testing.T) {
@@ -63,7 +65,7 @@ func TestManualReaderCollectsMetrics(t *testing.T) {
 
 func TestTLSConfigFromRawInvalidCA(t *testing.T) {
 	cfg := TelConfig{}
-	cfg.Raw.CA = []byte("not-a-pem")
+	cfg.Raw.CA = bytesconv.StringToBytes("not-a-pem")
 
 	_, err := tlsConfigFromRaw(cfg)
 	require.Error(t, err)

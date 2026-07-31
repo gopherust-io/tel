@@ -80,6 +80,10 @@ ctx = tel.ExtractContext(ctx, inboundHeaders)
 
 Prefer `MessagingSystem` / `MessagingSubject` (and friends) over hand-rolled attribute maps.
 
+## Logging
+
+Process-global zerolog via `tel.InitLogger` / `tel.ConfigureLogger` and `tel.Info()` / `tel.Ctx(ctx)`. Every line includes `caller` as `funcName:line` (e.g. `main.main:42`). `Err(err)` adds a `stack` field (func/file/line frames) for the call path to the log site.
+
 ## Knobs
 
 | Concern | Knob |
