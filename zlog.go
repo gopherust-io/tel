@@ -8,14 +8,16 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/rs/zerolog"
 )
 
 var (
-	logger atomic.Pointer[zerolog.Logger]
-	exitFn atomic.Pointer[func(int)]
+	logger            atomic.Pointer[zerolog.Logger]
+	exitFn            atomic.Pointer[func(int)]
+	consoleColorsOnce sync.Once
 )
 
 func init() {
@@ -44,6 +46,13 @@ type uintptrStackTracer interface {
 	StackTrace() []uintptr
 }
 
+// stackFrame is a single call-site entry in Err() stack output.
+type stackFrame struct {
+	Func   string `json:"func"`
+	Source string `json:"source"`
+	Line   int    `json:"line"`
+}
+
 func marshalErrorStack(err error) interface{} {
 	if err == nil {
 		return nil
@@ -55,7 +64,7 @@ func marshalErrorStack(err error) interface{} {
 	return captureRuntimeStack()
 }
 
-func stackFromTracer(err error) []map[string]string {
+func stackFromTracer(err error) []stackFrame {
 	for err != nil {
 		if st, ok := err.(uintptrStackTracer); ok {
 			return framesFromPCs(st.StackTrace())
@@ -66,7 +75,7 @@ func stackFromTracer(err error) []map[string]string {
 	return nil
 }
 
-func captureRuntimeStack() []map[string]string {
+func captureRuntimeStack() []stackFrame {
 	var pcs [64]uintptr
 	// Skip Callers + captureRuntimeStack.
 	n := runtime.Callers(2, pcs[:])
@@ -77,12 +86,12 @@ func captureRuntimeStack() []map[string]string {
 	return framesFromPCs(pcs[:n])
 }
 
-func framesFromPCs(pcs []uintptr) []map[string]string {
+func framesFromPCs(pcs []uintptr) []stackFrame {
 	if len(pcs) == 0 {
 		return nil
 	}
 	frames := runtime.CallersFrames(pcs)
-	out := make([]map[string]string, 0, len(pcs))
+	out := make([]stackFrame, 0, len(pcs))
 	for {
 		frame, more := frames.Next()
 		if frame.Function != "" && !skipStackFrame(frame.Function) {
@@ -94,10 +103,10 @@ func framesFromPCs(pcs []uintptr) []map[string]string {
 			if i := strings.LastIndex(file, "/"); i >= 0 {
 				file = file[i+1:]
 			}
-			out = append(out, map[string]string{
-				"func":   name,
-				"line":   strconv.Itoa(frame.Line),
-				"source": file,
+			out = append(out, stackFrame{
+				Func:   name,
+				Source: file,
+				Line:   frame.Line,
 			})
 		}
 		if !more {
@@ -149,9 +158,23 @@ func InitLogger(opts LoggerOptions) {
 
 	var out io.Writer = os.Stdout
 	if !opts.JSON {
+		applyConsoleLevelColors()
 		out = zerolog.ConsoleWriter{Out: os.Stdout}
 	}
 	SetLogger(newLogger(out))
+}
+
+// applyConsoleLevelColors sets zerolog console level colors once:
+// debug=blue, info=green, warn=yellow, error=red, fatal/panic=magenta (purple).
+func applyConsoleLevelColors() {
+	consoleColorsOnce.Do(func() {
+		zerolog.LevelColors[zerolog.DebugLevel] = 34 // blue
+		zerolog.LevelColors[zerolog.InfoLevel] = 32  // green
+		zerolog.LevelColors[zerolog.WarnLevel] = 33  // yellow
+		zerolog.LevelColors[zerolog.ErrorLevel] = 31 // red
+		zerolog.LevelColors[zerolog.FatalLevel] = 35 // magenta / purple
+		zerolog.LevelColors[zerolog.PanicLevel] = 35
+	})
 }
 
 // applyLoggerFromConfig maps Config.LogLevel / LogEncode onto InitLogger.

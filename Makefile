@@ -9,7 +9,7 @@ COVERAGE_MIN ?= 70
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@v1.6.0
-GOALIGN_VERSION := v1.1.0
+GOALIGN_VERSION := v1.2.0
 GOALIGN_BIN := $(HOME)/go/bin/goalign
 GOALIGN_FLAGS := analyze -r --arch=amd64 --fail-on-findings --min-waste=1 -e examples/ .
 

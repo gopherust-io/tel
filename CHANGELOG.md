@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.1
+
+- Console logger level colors: debug=blue, info=green, warn=yellow, error=red, fatal/panic=magenta (purple).
+- Err() stack frames use a typed `stackFrame` struct (no per-frame map allocs); console level colors applied once via `sync.Once`.
+- goalign v1.2.0; extra logger/bytesconv tests and benches.
+
 ## v0.2.0
 
 - Replace slog / stdlib log with process-global zerolog (`InitLogger` / `ConfigureLogger`, `Info()` / `Ctx(ctx)`).

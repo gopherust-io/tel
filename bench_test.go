@@ -2,9 +2,12 @@ package tel
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
@@ -160,5 +163,76 @@ func BenchmarkStartSpan(b *testing.B) {
 	for b.Loop() {
 		_, span := tel.StartSpan(context.Background(), "bench-span")
 		span.End()
+	}
+}
+
+func BenchmarkFastCounter_AddWith_CachedSubject(b *testing.B) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	registry := newRegistry(provider.Meter("bench"))
+
+	counter, err := registry.Counter("events")
+	if err != nil {
+		b.Fatal(err)
+	}
+	ctx := context.Background()
+	registry.AttrCache().SubjectOpts("orders.created")
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		counter.AddWith(ctx, 1, "orders.created")
+	}
+}
+
+func BenchmarkLogger_InfoMsg(b *testing.B) {
+	prev := Logger()
+	prevLevel := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	SetLogger(zerolog.New(io.Discard).With().Timestamp().Logger())
+	b.Cleanup(func() {
+		SetLogger(prev)
+		zerolog.SetGlobalLevel(prevLevel)
+	})
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		Info().Msg("ok")
+	}
+}
+
+func BenchmarkLogger_ErrorErrMsg(b *testing.B) {
+	prev := Logger()
+	prevLevel := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	SetLogger(zerolog.New(io.Discard).With().Timestamp().Caller().Stack().Logger())
+	b.Cleanup(func() {
+		SetLogger(prev)
+		zerolog.SetGlobalLevel(prevLevel)
+	})
+	err := errors.New("boom")
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		Error().Err(err).Msg("fail")
+	}
+}
+
+func BenchmarkCaptureRuntimeStack(b *testing.B) {
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = captureRuntimeStack()
+	}
+}
+
+func BenchmarkSkipStackFrame(b *testing.B) {
+	fn := "github.com/gopherust-io/tel.TestSkipStackFrame"
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = skipStackFrame(fn)
 	}
 }
