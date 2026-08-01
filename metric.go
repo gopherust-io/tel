@@ -21,14 +21,14 @@ type subjectEntry struct {
 	recordOpts []metric.RecordOption
 }
 
-// attrShard holds an immutable map behind atomic.Pointer for lock-free reads.
-// Inserts copy-on-write and CAS the pointer; steady-state hits never take a mutex.
+// attrShard uses a mutex + in-place map so cold inserts do not CoW-copy the shard.
 type attrShard struct {
-	cache atomic.Pointer[map[string]subjectEntry]
+	cache map[string]subjectEntry
+	mu    sync.RWMutex
 }
 
 // AttrCache interns attribute sets and metric options for hot-path label reuse.
-// Entries are sharded by subject hash; each shard is a lock-free CoW map.
+// Entries are sharded by subject hash; hits take a short shard RLock.
 type AttrCache struct {
 	shards       [attrCacheShards]attrShard
 	detector     *cardinalityDetector
@@ -45,8 +45,7 @@ func newAttrCache(maxEntries int) *AttrCache {
 
 	c := &AttrCache{maxEntries: maxEntries}
 	for i := range c.shards {
-		m := make(map[string]subjectEntry, maxEntries/attrCacheShards+1)
-		c.shards[i].cache.Store(&m)
+		c.shards[i].cache = make(map[string]subjectEntry, maxEntries/attrCacheShards+1)
 	}
 
 	return c
@@ -91,13 +90,22 @@ func (c *AttrCache) entry(subject string) subjectEntry {
 	idx := c.shardIndex(subject)
 	s := &c.shards[idx]
 
-	for {
-		cur := s.cache.Load()
-		if entry, ok := (*cur)[subject]; ok {
-			return entry
-		}
+	s.mu.RLock()
+	if entry, ok := s.cache[subject]; ok {
+		s.mu.RUnlock()
 
-		// Reserve a slot before mutating the map so Len() never exceeds maxEntries.
+		return entry
+	}
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if entry, ok := s.cache[subject]; ok {
+		return entry
+	}
+
+	for {
 		sz := c.size.Load()
 		if int(sz) >= c.maxEntries {
 			if c.detector != nil {
@@ -106,36 +114,19 @@ func (c *AttrCache) entry(subject string) subjectEntry {
 
 			return c.overflowEntry()
 		}
-		if !c.size.CompareAndSwap(sz, sz+1) {
-			continue
-		}
-
-		attrs := attribute.NewSet(attribute.String("subject", subject))
-		entry := newSubjectEntry(attrs)
-
-		for {
-			cur = s.cache.Load()
-			if existing, ok := (*cur)[subject]; ok {
-				c.size.Add(-1)
-
-				return existing
-			}
-
-			next := make(map[string]subjectEntry, len(*cur)+1)
-			for k, v := range *cur {
-				next[k] = v
-			}
-			next[subject] = entry
-
-			if s.cache.CompareAndSwap(cur, &next) {
-				if c.detector != nil {
-					c.detector.ObserveMiss(subject, false)
-				}
-
-				return entry
-			}
+		if c.size.CompareAndSwap(sz, sz+1) {
+			break
 		}
 	}
+
+	attrs := attribute.NewSet(attribute.String("subject", subject))
+	entry := newSubjectEntry(attrs)
+	s.cache[subject] = entry
+	if c.detector != nil {
+		c.detector.ObserveMiss(subject, false)
+	}
+
+	return entry
 }
 
 func (c *AttrCache) Len() int {

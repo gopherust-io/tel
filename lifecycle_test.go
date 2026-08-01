@@ -62,7 +62,7 @@ func TestShutdownResetsGlobalTracerProvider(t *testing.T) {
 	cfg := DefaultDebugConfig()
 	cfg.TelConfig.Enable = false
 	cfg.MonitorConfig.Enable = false
-	cfg.Traces.Enable = false
+	cfg.TelConfig.Traces.Enable = false
 
 	tel := NewWithConfig(cfg)
 	ctx := context.Background()
@@ -88,7 +88,7 @@ func TestShutdownDoesNotClobberForeignTracerProvider(t *testing.T) {
 	cfg := DefaultDebugConfig()
 	cfg.TelConfig.Enable = false
 	cfg.MonitorConfig.Enable = false
-	cfg.Traces.Enable = false
+	cfg.TelConfig.Traces.Enable = false
 
 	tel := NewWithConfig(cfg)
 	ctx := context.Background()
@@ -107,8 +107,8 @@ func TestStartFailureResetsInstalledTracerProvider(t *testing.T) {
 	cfg := DefaultDebugConfig()
 	cfg.TelConfig.Enable = false
 	cfg.MonitorConfig.Enable = true
-	cfg.MonitorAddr = ln.Addr().String()
-	cfg.Traces.Enable = false
+	cfg.MonitorConfig.MonitorAddr = ln.Addr().String()
+	cfg.TelConfig.Traces.Enable = false
 
 	tel := NewWithConfig(cfg)
 	// Pretend traces were installed before monitor bind fails.
@@ -231,7 +231,7 @@ func TestMonitorBindFailure(t *testing.T) {
 	cfg := DefaultDebugConfig()
 	cfg.TelConfig.Enable = false
 	cfg.MonitorConfig.Enable = true
-	cfg.MonitorAddr = ln.Addr().String()
+	cfg.MonitorConfig.MonitorAddr = ln.Addr().String()
 
 	tel := NewWithConfig(cfg)
 	err = tel.Start(context.Background())

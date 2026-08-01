@@ -90,6 +90,7 @@ linters:
         - j int
         - n int
         - w http.ResponseWriter
+        - r *http.Request
   exclusions:
     generated: lax
     presets:
@@ -134,6 +135,12 @@ linters:
         linters:
           - gochecknoglobals
       - path: monitor\.go
+        linters:
+          - gochecknoglobals
+      - path: sampler\.go
+        linters:
+          - gochecknoglobals
+      - path: middleware/fasthttp/
         linters:
           - gochecknoglobals
       - path: tel\.go

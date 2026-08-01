@@ -12,7 +12,7 @@ import (
 )
 
 func newTracerProvider(ctx context.Context, cfg Config) (trace.TracerProvider, func(context.Context) error, error) {
-	if !cfg.Traces.Enable {
+	if !cfg.TelConfig.Traces.Enable {
 		return noop.NewTracerProvider(), func(context.Context) error { return nil }, nil
 	}
 
@@ -27,10 +27,12 @@ func newTracerProvider(ctx context.Context, cfg Config) (trace.TracerProvider, f
 	}
 
 	res := newResource(cfg)
+	sampler := parseTraceSampler(cfg.TelConfig.Traces.Sampler)
 
 	provider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sampler),
 	)
 
 	installPropagator()

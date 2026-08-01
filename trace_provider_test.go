@@ -11,7 +11,7 @@ import (
 
 func TestNewTracerProviderDisabled(t *testing.T) {
 	cfg := DefaultDebugConfig()
-	cfg.Traces.Enable = false
+	cfg.TelConfig.Traces.Enable = false
 	provider, shutdown, err := newTracerProvider(context.Background(), cfg)
 	require.NoError(t, err)
 	require.NotNil(t, provider)
@@ -21,7 +21,7 @@ func TestNewTracerProviderDisabled(t *testing.T) {
 
 func TestNewTracerProviderShutdownIdempotent(t *testing.T) {
 	cfg := DefaultDebugConfig()
-	cfg.Traces.Enable = false
+	cfg.TelConfig.Traces.Enable = false
 	_, shutdown, err := newTracerProvider(context.Background(), cfg)
 	require.NoError(t, err)
 	require.NoError(t, shutdown(context.Background()))

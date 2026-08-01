@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -28,9 +29,9 @@ func newMeterProvider(ctx context.Context, cfg Config) (metric.MeterProvider, fu
 		return nil, nil, fmt.Errorf("create otlp metric exporter: %w", err)
 	}
 
-	interval := time.Duration(cfg.MetricsPeriodicIntervalSec) * time.Second
-	if cfg.ExportIntervalSec > 0 {
-		interval = time.Duration(cfg.ExportIntervalSec) * time.Second
+	interval := time.Duration(cfg.TelConfig.MetricsPeriodicIntervalSec) * time.Second
+	if cfg.TelConfig.ExportIntervalSec > 0 {
+		interval = time.Duration(cfg.TelConfig.ExportIntervalSec) * time.Second
 	}
 	if interval <= 0 {
 		interval = defaultMetricsPeriodicInterval
@@ -44,7 +45,7 @@ func newMeterProvider(ctx context.Context, cfg Config) (metric.MeterProvider, fu
 		sdkmetric.WithReader(reader),
 		sdkmetric.WithResource(res),
 	}
-	for _, view := range viewsFromBucketView(cfg.BucketView) {
+	for _, view := range viewsFromBucketView(cfg.TelConfig.BucketView) {
 		providerOpts = append(providerOpts, sdkmetric.WithView(view))
 	}
 
@@ -124,13 +125,20 @@ func newResource(cfg Config) *resource.Resource {
 		environment = defaultEnvironment
 	}
 
-	return resource.NewWithAttributes(
-		semconv.SchemaURL,
+	attrs := []attribute.KeyValue{
 		semconv.ServiceName(service),
 		semconv.ServiceVersion(version),
 		semconv.ServiceNamespace(namespace),
 		semconv.DeploymentEnvironment(environment),
-	)
+	}
+	if pod := resolvePod(cfg); pod != "" {
+		attrs = append(attrs,
+			semconv.ServiceInstanceID(pod),
+			semconv.HostName(pod),
+		)
+	}
+
+	return resource.NewWithAttributes(semconv.SchemaURL, attrs...)
 }
 
 func viewsFromBucketView(buckets []HistogramOpt) []sdkmetric.View {

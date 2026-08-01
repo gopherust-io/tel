@@ -239,9 +239,66 @@ func TestSkipStackFrame(t *testing.T) {
 	assert.False(t, skipStackFrame("github.com/gopherust-io/tel.TestSkipStackFrame"))
 }
 
+func TestFormatConsoleStackExtra(t *testing.T) {
+	var buf bytes.Buffer
+	evt := map[string]interface{}{
+		"stack": []interface{}{
+			map[string]interface{}{"func": "main.main", "source": "main.go", "line": json.Number("27")},
+			map[string]interface{}{"func": "runtime.main", "source": "proc.go", "line": json.Number("290")},
+		},
+	}
+	require.NoError(t, formatConsoleStackExtra(evt, &buf))
+	got := buf.String()
+	assert.Contains(t, got, "\nstack:")
+	assert.Contains(t, got, "\n  main.main main.go:27")
+	assert.Contains(t, got, "\n  runtime.main proc.go:290")
+}
+
+func TestConsoleWriterPrettifiesStack(t *testing.T) {
+	prev := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(prev) })
+
+	var buf bytes.Buffer
+	cw := zerolog.ConsoleWriter{
+		Out:           &buf,
+		NoColor:       true,
+		FieldsExclude: []string{"stack"},
+		FormatExtra:   formatConsoleStackExtra,
+	}
+	SetLogger(zerolog.New(cw).With().Timestamp().Caller().Stack().Logger())
+
+	Error().Err(errors.New("x")).Msg("fail")
+
+	out := buf.String()
+	assert.NotContains(t, out, `stack=[{"func"`)
+	assert.Contains(t, out, "\nstack:")
+	assert.Contains(t, out, "TestConsoleWriterPrettifiesStack")
+}
+
 func TestApplyLoggerFromConfigJSON(t *testing.T) {
 	ConfigureLogger(Config{LogLevel: "error", LogEncode: "json"})
 	require.Equal(t, zerolog.ErrorLevel, zerolog.GlobalLevel())
+}
+
+func TestPrettyJSONWriterIndents(t *testing.T) {
+	prev := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(prev) })
+
+	var buf bytes.Buffer
+	SetLogger(zerolog.New(prettyJSONWriter{w: &buf}).With().Timestamp().Logger())
+	Info().Str("service", "demo").Msg("hello")
+
+	out := buf.String()
+	assert.Contains(t, out, "\n  \"")
+	assert.Contains(t, out, `"service"`)
+	assert.Contains(t, out, `"hello"`)
+}
+
+func TestConfigureLoggerPrettyEncode(t *testing.T) {
+	ConfigureLogger(Config{LogLevel: "info", LogEncode: "pretty", Service: "svc"})
+	require.Equal(t, zerolog.InfoLevel, zerolog.GlobalLevel())
 }
 
 func TestWarnEmits(t *testing.T) {

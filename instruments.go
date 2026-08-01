@@ -84,7 +84,8 @@ func (r *Registry) instrumentCount() int {
 	return len(r.counters) + len(r.hists) + len(r.gauges)
 }
 
-// getOrCreate looks up under RLock, otherwise creates via create and stores under Lock.
+// getOrCreate looks up under RLock, otherwise creates under write lock so the
+// OTel Meter registration cannot race and orphan instruments in the SDK.
 func getOrCreate[T any](
 	reg *Registry,
 	lookup func() (T, bool),
@@ -99,27 +100,25 @@ func getOrCreate[T any](
 	}
 	reg.mu.RUnlock()
 
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+
+	if existing, ok := lookup(); ok {
+		return existing, nil
+	}
+	if reg.instrumentCount() >= reg.maxInstruments {
+		var zero T
+
+		return zero, fmt.Errorf("tel: max instruments (%d) exceeded", reg.maxInstruments)
+	}
+
 	created, err := create()
 	if err != nil {
 		var zero T
 
 		return zero, err
 	}
-
-	reg.mu.Lock()
-	if existing, ok := lookup(); ok {
-		reg.mu.Unlock()
-
-		return existing, nil
-	}
-	if reg.instrumentCount() >= reg.maxInstruments {
-		reg.mu.Unlock()
-		var zero T
-
-		return zero, fmt.Errorf("tel: max instruments (%d) exceeded", reg.maxInstruments)
-	}
 	store(created)
-	reg.mu.Unlock()
 
 	return created, nil
 }
@@ -251,16 +250,21 @@ func (c *FastCounter) AddWith(ctx context.Context, n int64, subject string) {
 	}
 
 	opts := c.cache.SubjectOpts(subject)
-	if len(c.opts) > 0 {
-		combined := make([]metric.AddOption, 0, len(c.opts)+len(opts))
-		combined = append(combined, c.opts...)
-		combined = append(combined, opts...)
-		c.counter.Add(ctx, n, combined...)
+	if len(c.opts) == 0 {
+		c.counter.Add(ctx, n, opts...)
 
 		return
 	}
+	if len(c.opts) == 1 && len(opts) == 1 {
+		combined := [2]metric.AddOption{c.opts[0], opts[0]}
+		c.counter.Add(ctx, n, combined[:]...)
 
-	c.counter.Add(ctx, n, opts...)
+		return
+	}
+	combined := make([]metric.AddOption, 0, len(c.opts)+len(opts))
+	combined = append(combined, c.opts...)
+	combined = append(combined, opts...)
+	c.counter.Add(ctx, n, combined...)
 }
 
 func (h *FastHistogram) WithAttrs(attrs attribute.Set) *FastHistogram {
@@ -299,16 +303,21 @@ func (h *FastHistogram) RecordWith(ctx context.Context, value float64, subject s
 	}
 
 	opts := h.cache.SubjectRecordOpts(subject)
-	if len(h.recordOpts) > 0 {
-		combined := make([]metric.RecordOption, 0, len(h.recordOpts)+len(opts))
-		combined = append(combined, h.recordOpts...)
-		combined = append(combined, opts...)
-		h.histogram.Record(ctx, value, combined...)
+	if len(h.recordOpts) == 0 {
+		h.histogram.Record(ctx, value, opts...)
 
 		return
 	}
+	if len(h.recordOpts) == 1 && len(opts) == 1 {
+		combined := [2]metric.RecordOption{h.recordOpts[0], opts[0]}
+		h.histogram.Record(ctx, value, combined[:]...)
 
-	h.histogram.Record(ctx, value, opts...)
+		return
+	}
+	combined := make([]metric.RecordOption, 0, len(h.recordOpts)+len(opts))
+	combined = append(combined, h.recordOpts...)
+	combined = append(combined, opts...)
+	h.histogram.Record(ctx, value, combined...)
 }
 
 func (g *FastGauge) WithAttrs(attrs attribute.Set) *FastGauge {
@@ -347,16 +356,21 @@ func (g *FastGauge) RecordWith(ctx context.Context, value int64, subject string)
 	}
 
 	opts := g.cache.SubjectRecordOpts(subject)
-	if len(g.recordOpts) > 0 {
-		combined := make([]metric.RecordOption, 0, len(g.recordOpts)+len(opts))
-		combined = append(combined, g.recordOpts...)
-		combined = append(combined, opts...)
-		g.gauge.Record(ctx, value, combined...)
+	if len(g.recordOpts) == 0 {
+		g.gauge.Record(ctx, value, opts...)
 
 		return
 	}
+	if len(g.recordOpts) == 1 && len(opts) == 1 {
+		combined := [2]metric.RecordOption{g.recordOpts[0], opts[0]}
+		g.gauge.Record(ctx, value, combined[:]...)
 
-	g.gauge.Record(ctx, value, opts...)
+		return
+	}
+	combined := make([]metric.RecordOption, 0, len(g.recordOpts)+len(opts))
+	combined = append(combined, g.recordOpts...)
+	combined = append(combined, opts...)
+	g.gauge.Record(ctx, value, combined...)
 }
 
 type Timer struct {

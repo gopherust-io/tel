@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"runtime/debug"
 	"sync"
 
 	"github.com/gopherust-io/tel/internal/bytesconv"
@@ -27,8 +28,8 @@ func newMonitorServer(addr string) *monitorServer {
 
 func (m *monitorServer) start(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", healthHandler)
-	mux.HandleFunc("/stats", statsHandler)
+	mux.HandleFunc("/healthz", recoverMonitor(healthHandler))
+	mux.HandleFunc("/stats", recoverMonitor(statsHandler))
 
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", m.addr)
@@ -40,6 +41,8 @@ func (m *monitorServer) start(ctx context.Context) error {
 		Addr:              m.addr,
 		Handler:           mux,
 		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		WriteTimeout:      defaultMonitorWriteTimeout,
+		IdleTimeout:       defaultMonitorIdleTimeout,
 	}
 
 	go func() {
@@ -64,6 +67,25 @@ func (m *monitorServer) shutdown(ctx context.Context) error {
 	})
 
 	return err
+}
+
+func recoverMonitor(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			rec := recover()
+			if rec == nil {
+				return
+			}
+			Error().
+				Str("component", "monitor").
+				Any("panic", rec).
+				Bytes("stack", debug.Stack()).
+				Str("path", r.URL.Path).
+				Msg("monitor handler panic")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}()
+		next(w, r)
+	}
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {

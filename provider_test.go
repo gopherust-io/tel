@@ -91,10 +91,10 @@ func TestOTLPExporterOptions(t *testing.T) {
 
 func TestHistogramOptInConfig(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.BucketView = []HistogramOpt{
+	cfg.TelConfig.BucketView = []HistogramOpt{
 		{Name: "request.duration", Boundaries: []float64{0.01, 0.05, 0.1}},
 	}
-	assert.Equal(t, "request.duration", cfg.BucketView[0].Name)
-	assert.Len(t, cfg.BucketView[0].Boundaries, 3)
+	assert.Equal(t, "request.duration", cfg.TelConfig.BucketView[0].Name)
+	assert.Len(t, cfg.TelConfig.BucketView[0].Boundaries, 3)
 	_ = time.Second
 }

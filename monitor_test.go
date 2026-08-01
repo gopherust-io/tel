@@ -31,7 +31,7 @@ func TestTelemetryStartWithMonitor(t *testing.T) {
 	cfg := DefaultDebugConfig()
 	cfg.TelConfig.Enable = false
 	cfg.MonitorConfig.Enable = true
-	cfg.MonitorAddr = "127.0.0.1:0"
+	cfg.MonitorConfig.MonitorAddr = "127.0.0.1:0"
 
 	tel := NewWithConfig(cfg)
 	require.NoError(t, tel.Start(context.Background()))

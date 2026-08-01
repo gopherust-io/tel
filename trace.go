@@ -47,6 +47,7 @@ func (t *Telemetry) StartSpan(
 	}
 
 	ctx, span := tr.Start(ctx, spanName, opts...) //nolint:spancheck // caller ends span
+	ctx = contextWithTraceLogger(ctx)
 
 	return ctx, span //nolint:spancheck // caller ends span
 }
@@ -83,6 +84,16 @@ func ExtractContext(ctx context.Context, headers map[string][]string) context.Co
 	}
 
 	return propagator().Extract(ctx, headerCarrier(headers))
+}
+
+// Inject writes W3C trace context into carrier.
+func Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
+	propagator().Inject(ctx, carrier)
+}
+
+// Extract reads W3C trace context from carrier.
+func Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
+	return propagator().Extract(ctx, carrier)
 }
 
 func EndSpan(span trace.Span, err error) {
