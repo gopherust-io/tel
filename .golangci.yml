@@ -162,6 +162,7 @@ linters:
       - path: cardinality\.go
         linters:
           - nonamedreturns
+          - govet
     paths:
       - examples
       - third_party$

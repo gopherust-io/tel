@@ -170,15 +170,17 @@ func (d *cardinalityDetector) Denied() int64 {
 }
 
 // CardinalitySnapshot is the monitor /stats cardinality cockpit payload.
+//
+// goalign:ignore // JSON DTO; trailing bool padding is unavoidable
 type CardinalitySnapshot struct {
+	MissEvents         int64    `json:"miss_events"`
+	OverflowEvents     int64    `json:"overflow_events"`
+	DeniedEvents       int64    `json:"denied_events"`
 	Subjects           []string `json:"subjects,omitempty"`
 	CacheEntries       int      `json:"cache_entries"`
 	MaxCardinality     int      `json:"max_cardinality"`
 	UtilizationPct     int      `json:"utilization_pct"`
 	WarnUtilizationPct int      `json:"warn_utilization_pct"`
-	MissEvents         int64    `json:"miss_events"`
-	OverflowEvents     int64    `json:"overflow_events"`
-	DeniedEvents       int64    `json:"denied_events"`
 	Instruments        int      `json:"instruments"`
 	MaxInstruments     int      `json:"max_instruments"`
 	DenyUnknown        bool     `json:"deny_unknown"`

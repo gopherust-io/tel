@@ -24,6 +24,7 @@ type RateSampler struct {
 	levels      [logSamplerNumLevels]rateCounter
 }
 
+// goalign:ignore // resetAt+count are updated together; pad would bloat RateSampler
 type rateCounter struct {
 	resetAt atomic.Int64
 	count   atomic.Uint64
