@@ -19,8 +19,8 @@ var healthOK = bytesconv.StringToBytes(`{"status":"ok"}`)
 
 type monitorServer struct {
 	server *http.Server
-	addr   string
 	tel    atomic.Pointer[Telemetry]
+	addr   string
 	once   sync.Once
 }
 

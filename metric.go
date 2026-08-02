@@ -36,14 +36,14 @@ type attrShard struct {
 // AttrCache interns attribute sets and metric options for hot-path label reuse.
 // Entries are sharded by subject hash; hits take a short shard RLock.
 type AttrCache struct {
-	shards       [attrCacheShards]attrShard
 	detector     *cardinalityDetector
 	allowed      atomic.Pointer[map[string]struct{}]
+	denyOnce     sync.Map
 	overflow     subjectEntry
+	shards       [attrCacheShards]attrShard
 	maxEntries   int
 	size         atomic.Int64
 	overflowOnce sync.Once
-	denyOnce     sync.Map // subject → struct{}
 	denyUnknown  atomic.Bool
 }
 
@@ -91,7 +91,11 @@ func (c *AttrCache) Allow(labels ...string) {
 	}
 
 	prev := c.allowed.Load()
-	next := make(map[string]struct{}, len(labels)+mapLen(prev))
+	capHint := len(labels)
+	if prev != nil {
+		capHint += len(*prev)
+	}
+	next := make(map[string]struct{}, capHint)
 	if prev != nil {
 		for k := range *prev {
 			next[k] = struct{}{}
@@ -104,14 +108,6 @@ func (c *AttrCache) Allow(labels ...string) {
 		next[l] = struct{}{}
 	}
 	c.allowed.Store(&next)
-}
-
-func mapLen(m *map[string]struct{}) int {
-	if m == nil {
-		return 0
-	}
-
-	return len(*m)
 }
 
 func (c *AttrCache) isAllowed(labels ...string) bool {
