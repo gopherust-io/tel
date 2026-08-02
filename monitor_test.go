@@ -27,6 +27,32 @@ func TestMonitorHealthAndStats(t *testing.T) {
 	require.NoError(t, monitor.shutdown(context.Background()))
 }
 
+func TestMonitorStatsWithCardinality(t *testing.T) {
+	cfg := DefaultDebugConfig()
+	cfg.TelConfig.Enable = false
+	cfg.MonitorConfig.Enable = false
+	cfg.TelConfig.Metrics.CardinalityDetector.Enable = true
+	cfg.TelConfig.Metrics.CardinalityDetector.MaxCardinality = 50
+
+	tel := NewWithConfig(cfg)
+	require.NoError(t, tel.Start(context.Background()))
+	defer func() { require.NoError(t, tel.Shutdown(context.Background())) }()
+
+	tel.AllowSubjects("orders.created")
+	counter, err := tel.Registry().Counter("events")
+	require.NoError(t, err)
+	counter.AddWith(context.Background(), 1, "orders.created")
+
+	monitor := newMonitorServer("127.0.0.1:0")
+	monitor.bind(tel)
+	rec := &responseRecorder{}
+	monitor.statsHandler(rec, &http.Request{Method: http.MethodGet})
+	assert.Equal(t, http.StatusOK, rec.status)
+	assert.Contains(t, rec.body, `"cardinality"`)
+	assert.Contains(t, rec.body, `"cache_entries"`)
+	assert.Contains(t, rec.body, "orders.created")
+}
+
 func TestTelemetryStartWithMonitor(t *testing.T) {
 	cfg := DefaultDebugConfig()
 	cfg.TelConfig.Enable = false

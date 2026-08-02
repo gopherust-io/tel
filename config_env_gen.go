@@ -8,7 +8,7 @@ import (
 
 func LoadConfig() (Config, error) {
 	var cfg Config
-	if err := ReloadConfig(&cfg); err != nil {
+	if err := loadConfig(&cfg, env.Snapshot()); err != nil {
 		return cfg, err
 	}
 	return cfg, nil
@@ -16,7 +16,12 @@ func LoadConfig() (Config, error) {
 
 func ReloadConfig(cfg *Config) error {
 	env.Reload()
-	return loadConfig(cfg, env.Snapshot())
+	var next Config
+	if err := loadConfig(&next, env.Snapshot()); err != nil {
+		return err
+	}
+	*cfg = next
+	return nil
 }
 
 func MustReloadConfig(cfg *Config) {
@@ -41,13 +46,48 @@ func MustLoadConfig() Config {
 	return cfg
 }
 
+var configAuditSchema = []env.SchemaField{
+	{Key: "MONITOR_ADDR", FieldPath: "MonitorConfig.MonitorAddr", Default: "127.0.0.1:8011", HasDefault: true},
+	{Key: "MONITOR_ENABLE", FieldPath: "MonitorConfig.Enable", Default: "true", HasDefault: true},
+	{Key: "TEL_COLLECTOR_GRPC_ADDR", FieldPath: "TelConfig.Address", Default: "127.0.0.1:4317", HasDefault: true},
+	{Key: "TEL_COLLECTOR_TLS_SERVER_NAME", FieldPath: "TelConfig.ServerName"},
+	{Key: "TEL_METRIC_PERIODIC_INTERVAL_SEC", FieldPath: "TelConfig.MetricsPeriodicIntervalSec", Default: "15", HasDefault: true},
+	{Key: "TEL_EXPORT_INTERVAL_SEC", FieldPath: "TelConfig.ExportIntervalSec", Default: "0", HasDefault: true},
+	{Key: "TEL_EXPORTER_WITH_INSECURE", FieldPath: "TelConfig.WithInsecure", Default: "true", HasDefault: true},
+	{Key: "TEL_ENABLE", FieldPath: "TelConfig.Enable", Default: "true", HasDefault: true},
+	{Key: "TEL_ENABLE_COMPRESSION", FieldPath: "TelConfig.WithCompression", Default: "true", HasDefault: true},
+	{Key: "TEL_SERVICE_NAME", FieldPath: "Service"},
+	{Key: "POD_NAME", FieldPath: "Pod"},
+	{Key: "NAMESPACE", FieldPath: "Namespace", Default: "default", HasDefault: true},
+	{Key: "DEPLOY_ENVIRONMENT", FieldPath: "Environment", Default: "dev", HasDefault: true},
+	{Key: "VERSION", FieldPath: "Version", Default: "dev", HasDefault: true},
+	{Key: "LOG_LEVEL", FieldPath: "LogLevel", Default: "info", HasDefault: true},
+	{Key: "LOG_ENCODE", FieldPath: "LogEncode", Default: "console", HasDefault: true},
+	{Key: "LOGS_MAX_MESSAGES_PER_SECOND", FieldPath: "MaxMessagesPerSecond", Default: "0", HasDefault: true},
+	{Key: "LOGS_MAX_LEVEL_MESSAGES_PER_SECOND", FieldPath: "MaxLevelMessagesPerSecond"},
+	{Key: "DEBUG", FieldPath: "Debug", Default: "false", HasDefault: true},
+}
+
+func AuditConfig(snap *env.EnvSnapshot) env.AuditReport {
+	return env.Audit(snap, configAuditSchema, env.AuditOptions{})
+}
+
+func AuditConfigWithOptions(snap *env.EnvSnapshot, opts env.AuditOptions) env.AuditReport {
+	return env.Audit(snap, configAuditSchema, opts)
+}
+
+func AuditConfigFromEnviron() env.AuditReport {
+	return AuditConfig(env.Snapshot())
+}
+
 func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	var errs []env.FieldError
 	{
 		key := "MONITOR_ADDR"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
-			cfg.MonitorConfig.MonitorAddr = "127.0.0.1:8011"
+		if !ok || env.IsEmpty(raw) {
+			v := "127.0.0.1:8011"
+			cfg.MonitorConfig.MonitorAddr = v
 		} else {
 			cfg.MonitorConfig.MonitorAddr = raw
 		}
@@ -55,7 +95,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "MONITOR_ENABLE"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 			v, err := env.ParseBool("true")
 			if err != nil {
 				env.AppendParse(&errs, "MonitorConfig.Enable", key, "true", err)
@@ -74,8 +114,9 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "TEL_COLLECTOR_GRPC_ADDR"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
-			cfg.TelConfig.Address = "127.0.0.1:4317"
+		if !ok || env.IsEmpty(raw) {
+			v := "127.0.0.1:4317"
+			cfg.TelConfig.Address = v
 		} else {
 			cfg.TelConfig.Address = raw
 		}
@@ -83,7 +124,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "TEL_COLLECTOR_TLS_SERVER_NAME"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 		} else {
 			cfg.TelConfig.ServerName = raw
 		}
@@ -91,7 +132,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "TEL_METRIC_PERIODIC_INTERVAL_SEC"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 			v, err := env.ParseInt("15")
 			if err != nil {
 				env.AppendParse(&errs, "TelConfig.MetricsPeriodicIntervalSec", key, "15", err)
@@ -110,7 +151,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "TEL_EXPORT_INTERVAL_SEC"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 			v, err := env.ParseInt("0")
 			if err != nil {
 				env.AppendParse(&errs, "TelConfig.ExportIntervalSec", key, "0", err)
@@ -129,7 +170,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "TEL_EXPORTER_WITH_INSECURE"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 			v, err := env.ParseBool("true")
 			if err != nil {
 				env.AppendParse(&errs, "TelConfig.WithInsecure", key, "true", err)
@@ -148,7 +189,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "TEL_ENABLE"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 			v, err := env.ParseBool("true")
 			if err != nil {
 				env.AppendParse(&errs, "TelConfig.Enable", key, "true", err)
@@ -167,7 +208,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "TEL_ENABLE_COMPRESSION"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 			v, err := env.ParseBool("true")
 			if err != nil {
 				env.AppendParse(&errs, "TelConfig.WithCompression", key, "true", err)
@@ -186,7 +227,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "TEL_SERVICE_NAME"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 		} else {
 			cfg.Service = raw
 		}
@@ -194,7 +235,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "POD_NAME"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 		} else {
 			cfg.Pod = raw
 		}
@@ -202,8 +243,9 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "NAMESPACE"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
-			cfg.Namespace = "default"
+		if !ok || env.IsEmpty(raw) {
+			v := "default"
+			cfg.Namespace = v
 		} else {
 			cfg.Namespace = raw
 		}
@@ -211,8 +253,9 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "DEPLOY_ENVIRONMENT"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
-			cfg.Environment = "dev"
+		if !ok || env.IsEmpty(raw) {
+			v := "dev"
+			cfg.Environment = v
 		} else {
 			cfg.Environment = raw
 		}
@@ -220,8 +263,9 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "VERSION"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
-			cfg.Version = "dev"
+		if !ok || env.IsEmpty(raw) {
+			v := "dev"
+			cfg.Version = v
 		} else {
 			cfg.Version = raw
 		}
@@ -229,8 +273,9 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "LOG_LEVEL"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
-			cfg.LogLevel = "info"
+		if !ok || env.IsEmpty(raw) {
+			v := "info"
+			cfg.LogLevel = v
 		} else {
 			cfg.LogLevel = raw
 		}
@@ -238,8 +283,9 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "LOG_ENCODE"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
-			cfg.LogEncode = "console"
+		if !ok || env.IsEmpty(raw) {
+			v := "console"
+			cfg.LogEncode = v
 		} else {
 			cfg.LogEncode = raw
 		}
@@ -247,7 +293,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "LOGS_MAX_MESSAGES_PER_SECOND"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 			v, err := env.ParseInt("0")
 			if err != nil {
 				env.AppendParse(&errs, "MaxMessagesPerSecond", key, "0", err)
@@ -266,7 +312,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "LOGS_MAX_LEVEL_MESSAGES_PER_SECOND"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 		} else {
 			cfg.MaxLevelMessagesPerSecond = raw
 		}
@@ -274,7 +320,7 @@ func loadConfig(cfg *Config, snap *env.EnvSnapshot) error {
 	{
 		key := "DEBUG"
 		raw, ok := snap.Lookup(key)
-		if !ok || raw == "" {
+		if !ok || env.IsEmpty(raw) {
 			v, err := env.ParseBool("false")
 			if err != nil {
 				env.AppendParse(&errs, "Debug", key, "false", err)

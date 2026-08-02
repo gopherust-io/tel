@@ -47,6 +47,9 @@ Root areas (by concern): `tel.go` / `provider.go` (lifecycle), `instruments.go` 
 - **Noop until Start:** instruments and exporters are safe before `Start`; enable export explicitly via lifecycle.
 - **Env-first config:** prefer `tel.Init` / `GetConfigFromEnv` over hand-built structs in services; use `DefaultDebugConfig` for local/tests without a collector.
 - **Cardinality guards:** AttrCache and subject helpers must not unbounded-label metrics; use the built-in limits.
+- **Cardinality cockpit:** `/stats` exposes cache utilization, miss/overflow/denied counters, and subject keys; warn when fill crosses `WarnUtilizationPct`.
+- **Fixed-arity labels:** prefer `*With2` / `*With3` over allocating attribute maps for a second/third bounded dimension.
+- **NATS contract:** messaging span attrs and W3C inject/extract stay in sync with gopherust-io/nats (`messaging.nats.*` keys, request/reply ops). Metric subjects should be stream/consumer-bounded, not raw inbox subjects.
 - **Restart-safe Shutdown:** `Shutdown` flushes and allows re-Init in the same process when tests need it.
 - **Optional monitor:** `/healthz` and `/stats` are opt-in via monitor config, not required for core telemetry.
 

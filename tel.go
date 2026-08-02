@@ -45,6 +45,7 @@ type Telemetry struct {
 	monitor        *monitorServer
 	shutdownFn     func(context.Context) error
 	traceShutdown  func(context.Context) error
+	allowedLabels  []string
 	cfg            Config
 	epoch          atomic.Uint64
 	mu             sync.RWMutex
@@ -124,6 +125,7 @@ func DefaultConfig() Config {
 					MaxCardinality:     defaultMaxCardinality,
 					MaxInstruments:     defaultMaxInstruments,
 					DiagnosticInterval: defaultDiagnosticInterval,
+					WarnUtilizationPct: defaultWarnUtilizationPct,
 					Enable:             true,
 				},
 			},
@@ -189,10 +191,17 @@ func (t *Telemetry) Start(ctx context.Context) error {
 		maxCardinality = defaultMaxCardinality
 	}
 	attrCache := newAttrCache(maxCardinality)
+	detectorCfg := t.cfg.TelConfig.Metrics.CardinalityDetector
+	attrCache.SetDenyUnknown(detectorCfg.DenyUnknown)
+	t.mu.RLock()
+	allowed := append([]string(nil), t.allowedLabels...)
+	t.mu.RUnlock()
+	if len(allowed) > 0 {
+		attrCache.Allow(allowed...)
+	}
 
 	var cardinality *cardinalityDetector
-	if t.cfg.TelConfig.Metrics.CardinalityDetector.Enable {
-		detectorCfg := t.cfg.TelConfig.Metrics.CardinalityDetector
+	if detectorCfg.Enable {
 		cardinality = newCardinalityDetector(cardinalitySettings(detectorCfg), attrCache)
 		attrCache.SetDetector(cardinality)
 	}
@@ -229,6 +238,10 @@ func (t *Telemetry) Start(ctx context.Context) error {
 	t.monitor = monitor
 	t.started.Store(true)
 	t.mu.Unlock()
+
+	if monitor != nil {
+		monitor.bind(t)
+	}
 
 	if cardinality != nil {
 		cardinality.Start()
@@ -400,6 +413,65 @@ func (t *Telemetry) Registry() *Registry {
 	}
 
 	return t.registry
+}
+
+// AllowSubjects registers label values for DenyUnknown mode. Safe before or after Start;
+// pre-Start values are applied when the AttrCache is created.
+func (t *Telemetry) AllowSubjects(labels ...string) {
+	if t == nil || len(labels) == 0 {
+		return
+	}
+
+	t.mu.Lock()
+	t.allowedLabels = append(t.allowedLabels, labels...)
+	cache := (*AttrCache)(nil)
+	if t.registry != nil {
+		cache = t.registry.cache
+	}
+	t.mu.Unlock()
+
+	if cache != nil {
+		cache.Allow(labels...)
+	}
+}
+
+// CardinalityStats returns the cardinality cockpit snapshot for /stats and diagnostics.
+func (t *Telemetry) CardinalityStats() CardinalitySnapshot {
+	if t == nil {
+		return CardinalitySnapshot{}
+	}
+
+	t.mu.RLock()
+	det := t.cardinality
+	reg := t.registry
+	maxInst := maxInstrumentsFromCfg(t.cfg)
+	t.mu.RUnlock()
+
+	instruments := 0
+	if reg != nil {
+		reg.mu.RLock()
+		instruments = reg.instrumentCount()
+		reg.mu.RUnlock()
+	}
+	if det != nil {
+		return det.Snapshot(instruments, maxInst)
+	}
+
+	snap := CardinalitySnapshot{
+		Instruments:    instruments,
+		MaxInstruments: maxInst,
+	}
+	if reg != nil && reg.cache != nil {
+		snap.CacheEntries = reg.cache.Len()
+		snap.MaxCardinality = reg.cache.MaxEntries()
+		snap.Subjects = reg.cache.Subjects()
+		snap.DenyUnknown = reg.cache.DenyUnknown()
+		if snap.MaxCardinality > 0 {
+			snap.UtilizationPct = (snap.CacheEntries * 100) / snap.MaxCardinality
+		}
+	}
+
+	return snap
 }
 
 func (t *Telemetry) refreshTracerLocked() {

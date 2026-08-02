@@ -77,6 +77,9 @@ if err != nil {
 
 count.AddWith(ctx, 1, "orders.created")
 
+// Two bounded dims (e.g. stream + outcome, or subject + status) — still AttrCache / 0 alloc warm.
+count.AddWith2(ctx, 1, "ORDERS", "ok")
+
 timer := tel.NewTimer(latency)
 timer.Start()
 // work
@@ -91,6 +94,9 @@ ctx = tel.ExtractContext(ctx, inboundHeaders)
 ```
 
 Prefer `MessagingSystem` / `MessagingSubject` (and friends) over hand-rolled attribute maps.
+For JetStream metrics prefer `AddWith2(stream, consumer)` (attrs `subject`+`status`) over raw NATS subjects.
+Span helpers: `MessagingStream` / `MessagingConsumer` / `MessagingStreamSequence` / `MessagingDeliveryCount`;
+propagate with `InjectContext` / `ExtractContext` (W3C).
 
 ## Logging
 
@@ -178,7 +184,9 @@ h := telfasthttp.Server(next,
 | Log rate limit | `LOGS_MAX_MESSAGES_PER_SECOND`, `LOGS_MAX_LEVEL_MESSAGES_PER_SECOND` |
 | Quiet local | `DefaultDebugConfig()` |
 | Compression | On by default; gzip BestSpeed on **export only** (`TEL_ENABLE_COMPRESSION`) |
-| Monitor | `MonitorConfig` → `GET /healthz`, `GET /stats` |
+| Monitor | `MonitorConfig` → `GET /healthz`, `GET /stats` (cardinality cockpit) |
+| Cardinality warn | `METRICS_CARDINALITY_WARN_UTILIZATION_PCT` (default `80`; `0` disables) |
+| Deny unknown labels | `METRICS_CARDINALITY_DENY_UNKNOWN` + `AllowSubjects` |
 
 Compression sets the process-wide gRPC `gzip` level. Default export is insecure—fine for a local collector; use `TelConfig.Raw` PEM for TLS/mTLS.
 
@@ -193,11 +201,52 @@ Call `Start` before recording. Instruments obtained **before** `Start` are inval
 3. Skip `Start` on a production `DefaultConfig()` and assume metrics still export.
 4. Keep using Counter/Histogram handles created before `Start`.
 
+## Performance
+
+AttrCache / Fast* instruments avoid per-call attribute allocation on the **record** path. Export (OTLP/gRPC) is out of scope for these numbers.
+
+| Approach | Role |
+|----------|------|
+| **tel** `*With` (warm subject) | Interned `attribute.Set` + opts via AttrCache |
+| Stock OTel prebuilt set | Same set reused every Add/Record |
+| Stock OTel naive | `attribute.NewSet(...)` every call |
+| Plain zerolog | Baseline logger (no trace fields) |
+
+### Sample results (darwin/arm64, Apple M4 Pro)
+
+Medians of `-count=6`. Directional; re-run on your hardware.
+
+| Path | ns/op | B/op | allocs/op |
+|------|------:|-----:|----------:|
+| Counter tel `AddWith` cached | 53 | 0 | **0** |
+| Counter OTel prebuilt set | 41 | 16 | 1 |
+| Counter OTel new set each call | 107 | 104 | 3 |
+| Histogram tel `RecordWith` cached | 61 | 0 | **0** |
+| Histogram OTel prebuilt set | 49 | 16 | 1 |
+| Histogram OTel new set each call | 117 | 104 | 3 |
+| Logger tel `Info` | 84 | 0 | **0** |
+| Logger zerolog `Info` | 84 | 0 | **0** |
+| Logger tel `InfoCtx` + span | 288 | 624 | 2 |
+| Span tel `StartSpan` | 591 | 1780 | 6 |
+| Span OTel `tracer.Start` | 358 | 1132 | 3 |
+
+Notes:
+
+- tel wins **allocs** on subject-keyed metrics vs both OTel variants; prebuilt OTel can be slightly fewer ns when the set is built outside the loop.
+- `StartSpan` / `InfoCtx` cost extra vs raw OTel/zerolog because tel attaches trace-correlated logger state on the context — that is intentional product work, not a pure span start.
+
+```bash
+make bench-compete
+```
+
+Methodology and raw sample: [benchmarks/compete/](benchmarks/compete/).
+
 ## Development
 
 ```bash
 make test
 make demo
+make bench-compete
 ```
 
 [CONTRIBUTING.md](CONTRIBUTING.md)

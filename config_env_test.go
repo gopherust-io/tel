@@ -64,6 +64,19 @@ func TestGetConfigFromEnvMissingDotEnvOK(t *testing.T) {
 	assert.Equal(t, "ok-without-file", cfg.Service)
 }
 
+func TestGetConfigFromEnvCardinalityKnobs(t *testing.T) {
+	t.Setenv("TEL_SERVICE_NAME", "orders-api")
+	t.Setenv("TEL_ENABLE", "false")
+	t.Setenv("MONITOR_ENABLE", "false")
+	t.Setenv("METRICS_CARDINALITY_DENY_UNKNOWN", "true")
+	t.Setenv("METRICS_CARDINALITY_WARN_UTILIZATION_PCT", "70")
+
+	cfg, err := GetConfigFromEnv()
+	require.NoError(t, err)
+	assert.True(t, cfg.TelConfig.Metrics.CardinalityDetector.DenyUnknown)
+	assert.Equal(t, 70, cfg.TelConfig.Metrics.CardinalityDetector.WarnUtilizationPct)
+}
+
 func TestInitWithConfigDisabled(t *testing.T) {
 	cfg := DefaultDebugConfig()
 	telem, shutdown, err := InitWithConfig(context.Background(), cfg)

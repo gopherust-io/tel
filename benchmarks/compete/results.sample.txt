@@ -1,0 +1,77 @@
+# tel compete sample results
+# go version go1.26.5 darwin/arm64
+# darwin/arm64 — Apple M4 Pro
+# command: go test -bench=BenchmarkCompete -benchmem -count=6 ./benchmarks/compete/
+#
+goos: darwin
+goarch: arm64
+pkg: github.com/gopherust-io/tel/benchmarks/compete
+cpu: Apple M4 Pro
+BenchmarkCompete_Counter/tel_AddWith_cached-14         	22366200	        53.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Counter/tel_AddWith_cached-14         	22825530	        52.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Counter/tel_AddWith_cached-14         	22898049	        52.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Counter/tel_AddWith_cached-14         	22775187	        52.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Counter/tel_AddWith_cached-14         	22657094	        53.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Counter/tel_AddWith_cached-14         	22744916	        53.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Counter/otel_Add_prebuiltSet-14       	29506774	        40.29 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Counter/otel_Add_prebuiltSet-14       	29674598	        40.60 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Counter/otel_Add_prebuiltSet-14       	28787908	        41.67 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Counter/otel_Add_prebuiltSet-14       	29977828	        41.03 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Counter/otel_Add_prebuiltSet-14       	29164142	        41.42 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Counter/otel_Add_prebuiltSet-14       	29688057	        40.35 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Counter/otel_Add_newSetEachCall-14    	11323348	       107.1 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Counter/otel_Add_newSetEachCall-14    	11239137	       106.7 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Counter/otel_Add_newSetEachCall-14    	11217390	       107.0 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Counter/otel_Add_newSetEachCall-14    	11296442	       106.6 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Counter/otel_Add_newSetEachCall-14    	11255838	       108.1 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Counter/otel_Add_newSetEachCall-14    	11237572	       106.5 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Histogram/tel_RecordWith_cached-14    	19874102	        60.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Histogram/tel_RecordWith_cached-14    	19977552	        60.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Histogram/tel_RecordWith_cached-14    	19755958	        60.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Histogram/tel_RecordWith_cached-14    	19723554	        61.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Histogram/tel_RecordWith_cached-14    	19789474	        60.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Histogram/tel_RecordWith_cached-14    	19650842	        60.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Histogram/otel_Record_prebuiltSet-14  	24501232	        48.91 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Histogram/otel_Record_prebuiltSet-14  	24887852	        48.69 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Histogram/otel_Record_prebuiltSet-14  	24778136	        49.01 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Histogram/otel_Record_prebuiltSet-14  	24649029	        48.40 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Histogram/otel_Record_prebuiltSet-14  	24593271	        48.86 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Histogram/otel_Record_prebuiltSet-14  	24740991	        48.69 ns/op	      16 B/op	       1 allocs/op
+BenchmarkCompete_Histogram/otel_Record_newSetEachCall-14         	10216402	       117.4 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Histogram/otel_Record_newSetEachCall-14         	10215369	       117.8 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Histogram/otel_Record_newSetEachCall-14         	10141869	       118.6 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Histogram/otel_Record_newSetEachCall-14         	10319688	       117.2 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Histogram/otel_Record_newSetEachCall-14         	10302348	       116.8 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Histogram/otel_Record_newSetEachCall-14         	10036825	       116.9 ns/op	     104 B/op	       3 allocs/op
+BenchmarkCompete_Span/tel_StartSpan-14                           	 2051145	       585.1 ns/op	    1784 B/op	       6 allocs/op
+BenchmarkCompete_Span/tel_StartSpan-14                           	 2187321	       600.1 ns/op	    1813 B/op	       6 allocs/op
+BenchmarkCompete_Span/tel_StartSpan-14                           	 2045569	       591.8 ns/op	    1784 B/op	       6 allocs/op
+BenchmarkCompete_Span/tel_StartSpan-14                           	 2163771	       586.3 ns/op	    1775 B/op	       6 allocs/op
+BenchmarkCompete_Span/tel_StartSpan-14                           	 2147378	       593.3 ns/op	    1776 B/op	       6 allocs/op
+BenchmarkCompete_Span/tel_StartSpan-14                           	 2156614	       591.1 ns/op	    1776 B/op	       6 allocs/op
+BenchmarkCompete_Span/otel_tracer_Start-14                       	 3600798	       363.2 ns/op	    1131 B/op	       3 allocs/op
+BenchmarkCompete_Span/otel_tracer_Start-14                       	 3710510	       349.5 ns/op	    1126 B/op	       3 allocs/op
+BenchmarkCompete_Span/otel_tracer_Start-14                       	 3559062	       359.2 ns/op	    1133 B/op	       3 allocs/op
+BenchmarkCompete_Span/otel_tracer_Start-14                       	 3620965	       356.7 ns/op	    1130 B/op	       3 allocs/op
+BenchmarkCompete_Span/otel_tracer_Start-14                       	 3518121	       360.4 ns/op	    1136 B/op	       3 allocs/op
+BenchmarkCompete_Span/otel_tracer_Start-14                       	 3566005	       353.4 ns/op	    1133 B/op	       3 allocs/op
+BenchmarkCompete_Logger/tel_Info-14                              	14371099	        83.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/tel_Info-14                              	14377534	        83.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/tel_Info-14                              	14370166	        83.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/tel_Info-14                              	14413620	        84.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/tel_Info-14                              	14377893	        83.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/tel_Info-14                              	14441359	        83.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/tel_InfoCtx_withSpan-14                  	 4455230	       274.3 ns/op	     624 B/op	       2 allocs/op
+BenchmarkCompete_Logger/tel_InfoCtx_withSpan-14                  	 4363687	       278.4 ns/op	     624 B/op	       2 allocs/op
+BenchmarkCompete_Logger/tel_InfoCtx_withSpan-14                  	 4234434	       287.5 ns/op	     624 B/op	       2 allocs/op
+BenchmarkCompete_Logger/tel_InfoCtx_withSpan-14                  	 4127668	       290.2 ns/op	     624 B/op	       2 allocs/op
+BenchmarkCompete_Logger/tel_InfoCtx_withSpan-14                  	 4129843	       290.1 ns/op	     624 B/op	       2 allocs/op
+BenchmarkCompete_Logger/tel_InfoCtx_withSpan-14                  	 4191118	       289.3 ns/op	     624 B/op	       2 allocs/op
+BenchmarkCompete_Logger/zerolog_Info-14                          	14260044	        84.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/zerolog_Info-14                          	14455131	        83.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/zerolog_Info-14                          	14366080	        83.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/zerolog_Info-14                          	14357050	        84.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/zerolog_Info-14                          	14329128	        83.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompete_Logger/zerolog_Info-14                          	14228538	        83.99 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/gopherust-io/tel/benchmarks/compete	83.640s

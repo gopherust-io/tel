@@ -103,6 +103,62 @@ func TestFastCounterAddWithCachedSubject(t *testing.T) {
 	require.NoError(t, reader.Collect(context.Background(), &rm))
 }
 
+func TestFastCounterAddWith2(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	registry := newRegistry(provider.Meter("test"))
+
+	counter, err := registry.Counter("events")
+	require.NoError(t, err)
+
+	counter.AddWith2(context.Background(), 1, "ORDERS", "ok")
+	counter.AddWith2(context.Background(), 1, "ORDERS", "ok")
+	assert.Equal(t, 1, registry.AttrCache().Len())
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+}
+
+func TestFastCounterAddWith3(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	registry := newRegistry(provider.Meter("test"))
+
+	counter, err := registry.Counter("events")
+	require.NoError(t, err)
+
+	counter.AddWith3(context.Background(), 1, "ORDERS", "ok", "worker")
+	assert.Equal(t, 1, registry.AttrCache().Len())
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+}
+
+func TestAttrCacheDenyUnknown(t *testing.T) {
+	cache := newAttrCache(10)
+	cache.SetDenyUnknown(true)
+	cache.Allow("orders.created")
+
+	_, ok := cache.lookup("orders.created")
+	assert.True(t, ok)
+	_, ok = cache.lookup("orders.evil")
+	assert.False(t, ok)
+	assert.Equal(t, 1, cache.Len())
+}
+
+func TestAttrCacheDuoTrioHit(t *testing.T) {
+	cache := newAttrCache(10)
+	a := cache.Subject2Opts("ORDERS", "ok")
+	b := cache.Subject2Opts("ORDERS", "ok")
+	assert.Equal(t, a, b)
+	assert.Equal(t, 1, cache.Len())
+
+	c := cache.Subject3Opts("ORDERS", "ok", "worker")
+	d := cache.Subject3Opts("ORDERS", "ok", "worker")
+	assert.Equal(t, c, d)
+	assert.Equal(t, 2, cache.Len())
+}
+
 func TestFastHistogramRecordWith(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
@@ -261,6 +317,12 @@ func TestMessagingAttributeHelpers(t *testing.T) {
 	assert.Equal(t, "nats", MessagingSystem().Value.AsString())
 	assert.Equal(t, "publish", MessagingOperationPublish().Value.AsString())
 	assert.Equal(t, "process", MessagingOperationProcess().Value.AsString())
+	assert.Equal(t, "request", MessagingOperationRequest().Value.AsString())
+	assert.Equal(t, "reply", MessagingOperationReply().Value.AsString())
+	assert.Equal(t, "ORDERS", MessagingStream("ORDERS").Value.AsString())
+	assert.Equal(t, "orders-worker", MessagingConsumer("orders-worker").Value.AsString())
+	assert.Equal(t, int64(42), MessagingStreamSequence(42).Value.AsInt64())
+	assert.Equal(t, int64(3), MessagingDeliveryCount(3).Value.AsInt64())
 }
 
 func TestTelemetryNewAndMeter(t *testing.T) {

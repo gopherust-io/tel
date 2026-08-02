@@ -63,6 +63,25 @@ func BenchmarkFastHistogram_RecordWith_CachedSubject(b *testing.B) {
 	}
 }
 
+func BenchmarkFastCounter_AddWith2_Cached(b *testing.B) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	registry := newRegistry(provider.Meter("bench"))
+
+	counter, err := registry.Counter("events")
+	if err != nil {
+		b.Fatal(err)
+	}
+	ctx := context.Background()
+	registry.AttrCache().Subject2Opts("ORDERS", "ok")
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		counter.AddWith2(ctx, 1, "ORDERS", "ok")
+	}
+}
+
 func BenchmarkFastGauge_RecordWith_CachedSubject(b *testing.B) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))

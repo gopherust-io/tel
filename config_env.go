@@ -19,6 +19,8 @@ func GetConfigFromEnv() (Config, error) {
 	if err := loadDotEnv(); err != nil {
 		return Config{}, err
 	}
+	// LoadDotEnv mutates process env; v0.6+ LoadConfig reads Snapshot without Reload.
+	env.Reload()
 	cfg, err := LoadConfig()
 	if err != nil {
 		return Config{}, err
@@ -60,7 +62,9 @@ func applyNestedEnv(cfg *Config) {
 	cd.MaxCardinality = envInt("METRICS_CARDINALITY_DETECTOR_MAX_CARDINALITY", defaultMaxCardinality)
 	cd.MaxInstruments = envInt("METRICS_CARDINALITY_DETECTOR_MAX_INSTRUMENTS", defaultMaxInstruments)
 	cd.DiagnosticInterval = envDuration("METRICS_CARDINALITY_DETECTOR_DIAGNOSTIC_INTERVAL", defaultDiagnosticInterval)
+	cd.WarnUtilizationPct = envInt("METRICS_CARDINALITY_WARN_UTILIZATION_PCT", defaultWarnUtilizationPct)
 	cd.Enable = envBool("METRICS_CARDINALITY_DETECTOR_ENABLE", true)
+	cd.DenyUnknown = envBool("METRICS_CARDINALITY_DENY_UNKNOWN", false)
 	cfg.TelConfig.Metrics.EnableRetry = envBool("METRICS_ENABLE_RETRY", false)
 
 	if v := os.Getenv("OTEL_COLLECTOR_TLS_CA_CERT"); v != "" {

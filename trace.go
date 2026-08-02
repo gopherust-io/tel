@@ -6,16 +6,24 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // Cached messaging attributes — avoid reconstructing constant KeyValues on every span.
+// Keys follow OTel messaging semantic conventions used by gopherust-io/nats.
 var (
-	messagingSystemAttr = attribute.String("messaging.system", "nats")
-	messagingOpPublish  = attribute.String("messaging.operation", "publish")
-	messagingOpProcess  = attribute.String("messaging.operation", "process")
-	messagingDestKey    = attribute.Key("messaging.destination")
+	messagingSystemAttr   = attribute.String("messaging.system", "nats")
+	messagingOpPublish    = attribute.String("messaging.operation", "publish")
+	messagingOpProcess    = attribute.String("messaging.operation", "process")
+	messagingOpRequest    = attribute.String("messaging.operation", "request")
+	messagingOpReply      = attribute.String("messaging.operation", "reply")
+	messagingDestKey      = attribute.Key("messaging.destination")
+	messagingStreamKey    = attribute.Key("messaging.nats.stream")
+	messagingConsumerKey  = attribute.Key("messaging.nats.consumer")
+	messagingStreamSeqKey = attribute.Key("messaging.nats.stream_sequence")
+	messagingDeliveryKey  = attribute.Key("messaging.nats.delivery_count")
 )
 
 func (t *Telemetry) Tracer(name string) trace.Tracer {
@@ -58,10 +66,29 @@ func propagator() propagation.TextMapPropagator {
 
 // NewWithTracerProvider wires a custom tracer provider (useful in tests and custom setups).
 func NewWithTracerProvider(cfg Config, provider trace.TracerProvider) *Telemetry {
+	return NewWithProviders(cfg, nil, provider)
+}
+
+// NewWithProviders wires custom metric and/or tracer providers for tests and
+// record-path benchmarks (e.g. sdkmetric.ManualReader). Nil providers keep the
+// debug/noop defaults from NewWithConfig.
+func NewWithProviders(cfg Config, mp metric.MeterProvider, tp trace.TracerProvider) *Telemetry {
 	tel := NewWithConfig(cfg)
 	tel.mu.Lock()
-	tel.traceProvider = provider
-	tel.refreshTracerLocked()
+	if mp != nil {
+		tel.metricProvider = mp
+		tel.registry = newRegistryWithCache(
+			mp.Meter(tel.cfg.Service),
+			newAttrCache(defaultMaxCardinality),
+			&tel.epoch,
+			tel.epoch.Load(),
+			maxInstrumentsFromCfg(tel.cfg),
+		)
+	}
+	if tp != nil {
+		tel.traceProvider = tp
+		tel.refreshTracerLocked()
+	}
 	tel.mu.Unlock()
 	tel.started.Store(true)
 
@@ -123,6 +150,34 @@ func MessagingOperationPublish() attribute.KeyValue {
 
 func MessagingOperationProcess() attribute.KeyValue {
 	return messagingOpProcess
+}
+
+func MessagingOperationRequest() attribute.KeyValue {
+	return messagingOpRequest
+}
+
+func MessagingOperationReply() attribute.KeyValue {
+	return messagingOpReply
+}
+
+// MessagingStream is the JetStream stream name (bounded cardinality).
+func MessagingStream(stream string) attribute.KeyValue {
+	return messagingStreamKey.String(stream)
+}
+
+// MessagingConsumer is the JetStream consumer/durable name (bounded cardinality).
+func MessagingConsumer(consumer string) attribute.KeyValue {
+	return messagingConsumerKey.String(consumer)
+}
+
+// MessagingStreamSequence is the stream sequence from JetStream ack metadata.
+func MessagingStreamSequence(seq int64) attribute.KeyValue {
+	return messagingStreamSeqKey.Int64(seq)
+}
+
+// MessagingDeliveryCount is the redelivery count from JetStream ack metadata.
+func MessagingDeliveryCount(n int64) attribute.KeyValue {
+	return messagingDeliveryKey.Int64(n)
 }
 
 type headerCarrier map[string][]string

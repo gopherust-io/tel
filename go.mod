@@ -3,7 +3,7 @@ module github.com/gopherust-io/tel
 go 1.26.5
 
 require (
-	github.com/gopherust-io/env v0.5.0
+	github.com/gopherust-io/env v0.6.0
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.11.1
 	github.com/valyala/fasthttp v1.73.0

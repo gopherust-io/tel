@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## v0.4.0
+
+- Depend on [env](https://github.com/gopherust-io/env) **v0.6.0**; goalign **v1.4.0**; regenerate `config_env_gen.go` (Config Doctor audit helpers).
+- `GetConfigFromEnv` calls `env.Reload()` after dotenv so Snapshot picks up loaded keys (env v0.6 `LoadConfig` no longer reloads).
+- Cardinality cockpit: `GET /stats` includes cache fill, miss/overflow/denied events, instrument counts, and subject keys; warn logs when utilization hits `METRICS_CARDINALITY_WARN_UTILIZATION_PCT` (default 80).
+- Deny-unknown subjects: `METRICS_CARDINALITY_DENY_UNKNOWN` + `Telemetry.AllowSubjects` / `AttrCache.Allow` (unknown `*With` labels no-op + one warn).
+- Fixed-arity AttrCache: `AddWith2` / `RecordWith2` / `StopWith2` (`subject`+`status`) and `*With3` (`+consumer`) — warm hits stay 0-alloc.
+- NATS/JetStream span attr helpers: `MessagingOperationRequest`/`Reply`, `MessagingStream`/`Consumer`, `MessagingStreamSequence`/`DeliveryCount` (aligned with gopherust-io/nats header + attribute keys).
+- Competitive benches under `benchmarks/compete/`.
 
 ## v0.3.0
 

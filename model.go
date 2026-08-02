@@ -77,7 +77,11 @@ type CardinalityDetectorConfig struct {
 	MaxCardinality     int           `env:"METRICS_CARDINALITY_DETECTOR_MAX_CARDINALITY"     default:"100"`
 	MaxInstruments     int           `env:"METRICS_CARDINALITY_DETECTOR_MAX_INSTRUMENTS"     default:"500"`
 	DiagnosticInterval time.Duration `env:"METRICS_CARDINALITY_DETECTOR_DIAGNOSTIC_INTERVAL" default:"10m"`
-	Enable             bool          `env:"METRICS_CARDINALITY_DETECTOR_ENABLE"              default:"true"`
+	// WarnUtilizationPct logs when cache fill reaches this percent of MaxCardinality (0 disables).
+	WarnUtilizationPct int  `env:"METRICS_CARDINALITY_WARN_UTILIZATION_PCT" default:"80"`
+	Enable             bool `env:"METRICS_CARDINALITY_DETECTOR_ENABLE"       default:"true"`
+	// DenyUnknown drops *With labels not registered via AttrCache.Allow / Telemetry.AllowSubjects.
+	DenyUnknown bool `env:"METRICS_CARDINALITY_DENY_UNKNOWN" default:"false"`
 }
 
 // TracesConfig holds trace export settings.

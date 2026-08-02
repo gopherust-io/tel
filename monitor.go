@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gopherust-io/tel/internal/bytesconv"
 )
@@ -19,6 +20,7 @@ var healthOK = bytesconv.StringToBytes(`{"status":"ok"}`)
 type monitorServer struct {
 	server *http.Server
 	addr   string
+	tel    atomic.Pointer[Telemetry]
 	once   sync.Once
 }
 
@@ -26,10 +28,17 @@ func newMonitorServer(addr string) *monitorServer {
 	return &monitorServer{addr: addr}
 }
 
+func (m *monitorServer) bind(t *Telemetry) {
+	if m == nil {
+		return
+	}
+	m.tel.Store(t)
+}
+
 func (m *monitorServer) start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", recoverMonitor(healthHandler))
-	mux.HandleFunc("/stats", recoverMonitor(statsHandler))
+	mux.HandleFunc("/stats", recoverMonitor(m.statsHandler))
 
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", m.addr)
@@ -94,23 +103,29 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(healthOK)
 }
 
-func statsHandler(w http.ResponseWriter, _ *http.Request) {
+func (m *monitorServer) statsHandler(w http.ResponseWriter, _ *http.Request) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 
 	payload := struct {
-		Goroutines int `json:"goroutines"`
-		Memory     struct {
+		Cardinality *CardinalitySnapshot `json:"cardinality,omitempty"`
+		Memory      struct {
 			AllocBytes      uint64 `json:"alloc_bytes"`
 			TotalAllocBytes uint64 `json:"total_alloc_bytes"`
 			SysBytes        uint64 `json:"sys_bytes"`
 		} `json:"memory"`
+		Goroutines int `json:"goroutines"`
 	}{
 		Goroutines: runtime.NumGoroutine(),
 	}
 	payload.Memory.AllocBytes = ms.Alloc
 	payload.Memory.TotalAllocBytes = ms.TotalAlloc
 	payload.Memory.SysBytes = ms.Sys
+
+	if t := m.tel.Load(); t != nil {
+		snap := t.CardinalityStats()
+		payload.Cardinality = &snap
+	}
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(payload); err != nil {
@@ -122,4 +137,10 @@ func statsHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(buf.Bytes())
+}
+
+// statsHandlerLegacy keeps direct-handler tests exercising runtime-only payload.
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	m := &monitorServer{}
+	m.statsHandler(w, r)
 }

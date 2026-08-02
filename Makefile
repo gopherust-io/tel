@@ -5,11 +5,11 @@ NPROCS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/
 GO_TEST_FLAGS := -count=1 -parallel=$(NPROCS) -timeout=60s
 COVERAGE_MIN ?= 70
 
-.PHONY: help test test-race coverage coverage-html bench ci vet fmt fmt-check lint lint-fix govulncheck align examples demo
+.PHONY: help test test-race coverage coverage-html bench bench-compete ci vet fmt fmt-check lint lint-fix govulncheck align examples demo
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@v1.6.0
-GOALIGN_VERSION := v1.3.0
+GOALIGN_VERSION := v1.4.0
 GOALIGN_BIN := $(HOME)/go/bin/goalign
 GOALIGN_FLAGS := analyze -r --arch=amd64 --fail-on-findings --min-waste=1 -e examples/ .
 
@@ -27,6 +27,7 @@ help:
 	@echo "  coverage          Write coverage.out and enforce COVERAGE_MIN ($(COVERAGE_MIN)%)"
 	@echo "  coverage-html     Open HTML coverage report"
 	@echo "  bench             Run all benchmarks"
+	@echo "  bench-compete     Competitive benches vs stock OTel / zerolog"
 	@echo "  ci                fmt-check + unit tests + race + vet + lint"
 	@echo "  fmt               gofmt -w"
 	@echo "  fmt-check         fail if any file needs gofmt"
@@ -56,6 +57,9 @@ coverage-html: coverage
 
 bench:
 	go test -bench=. -benchmem $(PKGS) -run '^$$'
+
+bench-compete:
+	go test -bench=BenchmarkCompete -benchmem -count=10 ./benchmarks/compete/ -run '^$$'
 
 ci: fmt-check test test-race vet lint
 

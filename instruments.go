@@ -249,7 +249,52 @@ func (c *FastCounter) AddWith(ctx context.Context, n int64, subject string) {
 		return
 	}
 
-	opts := c.cache.SubjectOpts(subject)
+	entry, ok := c.cache.lookup(subject)
+	if !ok {
+		return
+	}
+	c.addWithOpts(ctx, n, entry.addOpts)
+}
+
+// AddWith2 records with interned subject+status attributes (0 allocs on warm hits).
+func (c *FastCounter) AddWith2(ctx context.Context, n int64, subject, status string) {
+	if !c.live() {
+		return
+	}
+
+	if bytesconv.IsEmpty(subject) && bytesconv.IsEmpty(status) {
+		c.Add(ctx, n)
+
+		return
+	}
+
+	entry, ok := c.cache.lookup2(subject, status)
+	if !ok {
+		return
+	}
+	c.addWithOpts(ctx, n, entry.addOpts)
+}
+
+// AddWith3 records with interned subject+status+consumer attributes.
+func (c *FastCounter) AddWith3(ctx context.Context, n int64, subject, status, consumer string) {
+	if !c.live() {
+		return
+	}
+
+	if bytesconv.IsEmpty(subject) && bytesconv.IsEmpty(status) && bytesconv.IsEmpty(consumer) {
+		c.Add(ctx, n)
+
+		return
+	}
+
+	entry, ok := c.cache.lookup3(subject, status, consumer)
+	if !ok {
+		return
+	}
+	c.addWithOpts(ctx, n, entry.addOpts)
+}
+
+func (c *FastCounter) addWithOpts(ctx context.Context, n int64, opts []metric.AddOption) {
 	if len(c.opts) == 0 {
 		c.counter.Add(ctx, n, opts...)
 
@@ -302,7 +347,52 @@ func (h *FastHistogram) RecordWith(ctx context.Context, value float64, subject s
 		return
 	}
 
-	opts := h.cache.SubjectRecordOpts(subject)
+	entry, ok := h.cache.lookup(subject)
+	if !ok {
+		return
+	}
+	h.recordWithOpts(ctx, value, entry.recordOpts)
+}
+
+// RecordWith2 records with interned subject+status attributes.
+func (h *FastHistogram) RecordWith2(ctx context.Context, value float64, subject, status string) {
+	if !h.live() {
+		return
+	}
+
+	if bytesconv.IsEmpty(subject) && bytesconv.IsEmpty(status) {
+		h.Record(ctx, value)
+
+		return
+	}
+
+	entry, ok := h.cache.lookup2(subject, status)
+	if !ok {
+		return
+	}
+	h.recordWithOpts(ctx, value, entry.recordOpts)
+}
+
+// RecordWith3 records with interned subject+status+consumer attributes.
+func (h *FastHistogram) RecordWith3(ctx context.Context, value float64, subject, status, consumer string) {
+	if !h.live() {
+		return
+	}
+
+	if bytesconv.IsEmpty(subject) && bytesconv.IsEmpty(status) && bytesconv.IsEmpty(consumer) {
+		h.Record(ctx, value)
+
+		return
+	}
+
+	entry, ok := h.cache.lookup3(subject, status, consumer)
+	if !ok {
+		return
+	}
+	h.recordWithOpts(ctx, value, entry.recordOpts)
+}
+
+func (h *FastHistogram) recordWithOpts(ctx context.Context, value float64, opts []metric.RecordOption) {
 	if len(h.recordOpts) == 0 {
 		h.histogram.Record(ctx, value, opts...)
 
@@ -355,7 +445,52 @@ func (g *FastGauge) RecordWith(ctx context.Context, value int64, subject string)
 		return
 	}
 
-	opts := g.cache.SubjectRecordOpts(subject)
+	entry, ok := g.cache.lookup(subject)
+	if !ok {
+		return
+	}
+	g.recordWithOpts(ctx, value, entry.recordOpts)
+}
+
+// RecordWith2 records with interned subject+status attributes.
+func (g *FastGauge) RecordWith2(ctx context.Context, value int64, subject, status string) {
+	if !g.live() {
+		return
+	}
+
+	if bytesconv.IsEmpty(subject) && bytesconv.IsEmpty(status) {
+		g.Record(ctx, value)
+
+		return
+	}
+
+	entry, ok := g.cache.lookup2(subject, status)
+	if !ok {
+		return
+	}
+	g.recordWithOpts(ctx, value, entry.recordOpts)
+}
+
+// RecordWith3 records with interned subject+status+consumer attributes.
+func (g *FastGauge) RecordWith3(ctx context.Context, value int64, subject, status, consumer string) {
+	if !g.live() {
+		return
+	}
+
+	if bytesconv.IsEmpty(subject) && bytesconv.IsEmpty(status) && bytesconv.IsEmpty(consumer) {
+		g.Record(ctx, value)
+
+		return
+	}
+
+	entry, ok := g.cache.lookup3(subject, status, consumer)
+	if !ok {
+		return
+	}
+	g.recordWithOpts(ctx, value, entry.recordOpts)
+}
+
+func (g *FastGauge) recordWithOpts(ctx context.Context, value int64, opts []metric.RecordOption) {
 	if len(g.recordOpts) == 0 {
 		g.gauge.Record(ctx, value, opts...)
 
@@ -409,5 +544,23 @@ func (t *Timer) StopWith(ctx context.Context, subject string) {
 	}
 
 	t.hist.RecordWith(ctx, t.elapsed(), subject)
+	t.start = 0
+}
+
+func (t *Timer) StopWith2(ctx context.Context, subject, status string) {
+	if t.hist == nil || t.start == 0 {
+		return
+	}
+
+	t.hist.RecordWith2(ctx, t.elapsed(), subject, status)
+	t.start = 0
+}
+
+func (t *Timer) StopWith3(ctx context.Context, subject, status, consumer string) {
+	if t.hist == nil || t.start == 0 {
+		return
+	}
+
+	t.hist.RecordWith3(ctx, t.elapsed(), subject, status, consumer)
 	t.start = 0
 }

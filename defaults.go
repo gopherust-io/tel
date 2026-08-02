@@ -25,6 +25,12 @@ const (
 	defaultMaxCardinality     = 100
 	defaultMaxInstruments     = 500
 	defaultDiagnosticInterval = 10 * time.Minute
+	defaultWarnUtilizationPct = 80
+
+	// Metric attribute keys for fixed-arity AttrCache helpers.
+	attrKeySubject  = "subject"
+	attrKeyStatus   = "status"
+	attrKeyConsumer = "consumer"
 
 	defaultTracesSampler      = "parentbased_statustraceidratio:0.1"
 	defaultDebugTracesSampler = "always"
